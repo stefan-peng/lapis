@@ -7,6 +7,13 @@ import UniformTypeIdentifiers
 @MainActor
 @Observable
 final class AppState {
+    enum WorkspaceMode: String, CaseIterable, Identifiable {
+        case library
+        case edit
+
+        var id: String { rawValue }
+    }
+
     static let defaultExportPresets: [ExportPreset] = [
         ExportPreset(
             name: "Web JPEG",
@@ -37,6 +44,8 @@ final class AppState {
     var selectedExportPresetID: UUID = AppState.defaultExportPresets[0].id
     var exportPresets: [ExportPreset] = AppState.defaultExportPresets
 
+    var workspaceMode: WorkspaceMode = .library
+    var showOriginalInEditor = false
     var filter = AssetFilter.default
     var importSummary = ""
     var statusMessage = ""
@@ -146,6 +155,20 @@ final class AppState {
         transform(&asset.developSettings)
         do {
             try environment.catalogStore.saveDevelopSettings(assetID: asset.id, settings: asset.developSettings)
+            try regeneratePreview(for: asset, settings: asset.developSettings)
+            showOriginalInEditor = false
+            try reload()
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    func resetSelectedAssetDevelopSettings() {
+        guard let asset = selectedAsset else { return }
+        do {
+            try environment.catalogStore.saveDevelopSettings(assetID: asset.id, settings: .default)
+            try regeneratePreview(for: asset, settings: .default)
+            showOriginalInEditor = false
             try reload()
         } catch {
             statusMessage = error.localizedDescription
@@ -230,5 +253,24 @@ final class AppState {
         var scopeFilter = AssetFilter.default
         scopeFilter.albumID = selectedAlbumID
         return try environment.catalogStore.fetchAssets(filter: scopeFilter)
+    }
+
+    private func regeneratePreview(for asset: Asset, settings: DevelopSettings) throws {
+        do {
+            let rendered = try environment.renderer.renderImage(
+                from: URL(fileURLWithPath: asset.sourcePath),
+                settings: settings,
+                maxPixelSize: 2048
+            )
+            let previewURL = try environment.previewService.cachePreview(named: asset.id.uuidString, image: rendered)
+            try environment.catalogStore.updatePreview(
+                assetID: asset.id,
+                previewPath: previewURL.path(percentEncoded: false),
+                status: .ready
+            )
+        } catch {
+            try? environment.catalogStore.updatePreview(assetID: asset.id, previewPath: nil, status: .failed)
+            throw error
+        }
     }
 }

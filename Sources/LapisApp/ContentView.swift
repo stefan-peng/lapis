@@ -1,4 +1,5 @@
 import LapisCore
+import ImageIO
 import MapKit
 import CoreLocation
 import SwiftUI
@@ -10,13 +11,20 @@ struct ContentView: View {
         NavigationSplitView {
             sidebar
         } content: {
-            libraryPane
+            contentPane
         } detail: {
             detailPane
         }
         .navigationTitle("Lapis")
         .toolbar {
             ToolbarItemGroup {
+                Picker("Mode", selection: $state.workspaceMode) {
+                    ForEach(AppState.WorkspaceMode.allCases) { mode in
+                        Text(mode.rawValue.capitalized).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+
                 Button("Import Folder", action: state.importFolders)
                 Button("Apply GPX", action: state.importGPX)
                 Button("Export", action: state.exportSelection)
@@ -42,6 +50,11 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     TextField("Search", text: $state.filter.searchText)
                         .textFieldStyle(.roundedBorder)
+                    TextField("Keyword", text: Binding(
+                        get: { state.filter.keyword ?? "" },
+                        set: { state.filter.keyword = $0.isEmpty ? nil : $0 }
+                    ))
+                    .textFieldStyle(.roundedBorder)
                     Toggle("Picked only", isOn: $state.filter.flaggedOnly)
                     Toggle("Geotagged only", isOn: $state.filter.geotaggedOnly)
                     Stepper(
@@ -60,13 +73,30 @@ struct ContentView: View {
                         get: { state.filter.lensContains ?? "" },
                         set: { state.filter.lensContains = $0.isEmpty ? nil : $0 }
                     ))
+                    optionalDateFilter(
+                        title: "Captured After",
+                        value: Binding(
+                            get: { state.filter.capturedAfter },
+                            set: { state.filter.capturedAfter = $0 }
+                        )
+                    )
+                    optionalDateFilter(
+                        title: "Captured Before",
+                        value: Binding(
+                            get: { state.filter.capturedBefore },
+                            set: { state.filter.capturedBefore = $0 }
+                        )
+                    )
                 }
                 .onChange(of: state.filter.searchText) { _, _ in reload() }
+                .onChange(of: state.filter.keyword) { _, _ in reload() }
                 .onChange(of: state.filter.flaggedOnly) { _, _ in reload() }
                 .onChange(of: state.filter.geotaggedOnly) { _, _ in reload() }
                 .onChange(of: state.filter.minimumRating) { _, _ in reload() }
                 .onChange(of: state.filter.cameraContains) { _, _ in reload() }
                 .onChange(of: state.filter.lensContains) { _, _ in reload() }
+                .onChange(of: state.filter.capturedAfter) { _, _ in reload() }
+                .onChange(of: state.filter.capturedBefore) { _, _ in reload() }
             }
 
             GroupBox("Albums") {
@@ -105,6 +135,16 @@ struct ContentView: View {
         .frame(minWidth: 250)
     }
 
+    @ViewBuilder
+    private var contentPane: some View {
+        switch state.workspaceMode {
+        case .library:
+            libraryPane
+        case .edit:
+            editPane
+        }
+    }
+
     private var libraryPane: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("\(state.assets.count) photos")
@@ -138,16 +178,31 @@ struct ContentView: View {
     }
 
     @ViewBuilder
+    private var editPane: some View {
+        if let asset = state.selectedAsset {
+            EditorWorkspaceView(state: state, asset: asset)
+        } else {
+            VStack(spacing: 12) {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.secondary)
+                Text("Select a single photo, then switch to Edit mode.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
     private var detailPane: some View {
-        if state.compareAssets.count == 2 {
+        if let asset = state.selectedAsset {
+            MetadataSidebarView(state: state, asset: asset)
+        } else if state.workspaceMode == .library, state.compareAssets.count == 2 {
             HStack(spacing: 16) {
                 ForEach(state.compareAssets) { asset in
                     AssetPreviewPanel(asset: asset)
                 }
             }
             .padding()
-        } else if let asset = state.selectedAsset {
-            InspectorView(state: state, asset: asset)
         } else if !state.geotaggedAssets.isEmpty {
             MapBrowserView(state: state)
         } else {
@@ -157,6 +212,32 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
                 Text("Select one photo to inspect or two photos to compare.")
                     .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func optionalDateFilter(title: String, value: Binding<Date?>) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let wrappedValue = value.wrappedValue {
+                DatePicker(
+                    title,
+                    selection: Binding(
+                        get: { wrappedValue },
+                        set: { value.wrappedValue = $0 }
+                    ),
+                    displayedComponents: .date
+                )
+                Button("Clear \(title)") {
+                    value.wrappedValue = nil
+                }
+                .buttonStyle(.plain)
+                .font(.caption)
+            } else {
+                Button("Set \(title)") {
+                    value.wrappedValue = .now
+                }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -256,15 +337,13 @@ private struct AssetThumbnailView: View {
 
 private struct AssetPreviewPanel: View {
     let asset: Asset
+    var useOriginalPreview = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(URL(fileURLWithPath: asset.sourcePath).lastPathComponent)
                 .font(.headline)
-            if
-                let previewPath = asset.previewPath,
-                let image = NSImage(contentsOfFile: previewPath)
-            {
+            if let image = resolvedImage {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFit()
@@ -276,18 +355,28 @@ private struct AssetPreviewPanel: View {
             }
         }
     }
+
+    private var resolvedImage: NSImage? {
+        if useOriginalPreview {
+            return PreviewImageLoader.loadOriginalPreview(from: asset.sourcePath)
+        }
+        if
+            let previewPath = asset.previewPath,
+            let image = NSImage(contentsOfFile: previewPath)
+        {
+            return image
+        }
+        return PreviewImageLoader.loadOriginalPreview(from: asset.sourcePath)
+    }
 }
 
-private struct InspectorView: View {
+private struct MetadataSidebarView: View {
     @Bindable var state: AppState
     let asset: Asset
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                AssetPreviewPanel(asset: asset)
-                    .frame(height: 380)
-
                 GroupBox("Metadata") {
                     VStack(alignment: .leading, spacing: 8) {
                         LabeledContent("Camera", value: [asset.cameraMake, asset.cameraModel].compactMap { $0 }.joined(separator: " "))
@@ -316,8 +405,46 @@ private struct InspectorView: View {
                     }
                 }
 
+                if let coordinate = asset.gpsCoordinate {
+                    GroupBox("Map") {
+                        Map(initialPosition: .region(.init(
+                            center: .init(latitude: coordinate.latitude, longitude: coordinate.longitude),
+                            span: .init(latitudeDelta: 0.05, longitudeDelta: 0.05)
+                        ))) {
+                            Marker(URL(fileURLWithPath: asset.sourcePath).lastPathComponent, coordinate: .init(latitude: coordinate.latitude, longitude: coordinate.longitude))
+                        }
+                        .frame(height: 240)
+                    }
+                }
+            }
+            .padding()
+        }
+    }
+}
+
+private struct EditorWorkspaceView: View {
+    @Bindable var state: AppState
+    let asset: Asset
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text(URL(fileURLWithPath: asset.sourcePath).lastPathComponent)
+                    .font(.title3)
+                Spacer()
+                Toggle("Show Original", isOn: $state.showOriginalInEditor)
+                    .toggleStyle(.switch)
+                Button("Reset Edits") {
+                    state.resetSelectedAssetDevelopSettings()
+                }
+            }
+
+            AssetPreviewPanel(asset: asset, useOriginalPreview: state.showOriginalInEditor)
+                .frame(maxWidth: .infinity, maxHeight: 420)
+
+            ScrollView {
                 GroupBox("Develop") {
-                    VStack(spacing: 10) {
+                    VStack(spacing: 12) {
                         slider(title: "Exposure", value: asset.developSettings.exposure, range: -4...4) { $0.exposure = $1 }
                         slider(title: "Contrast", value: asset.developSettings.contrast, range: 0.5...2) { $0.contrast = $1 }
                         slider(title: "Highlights", value: asset.developSettings.highlights, range: -1...1) { $0.highlights = $1 }
@@ -333,22 +460,35 @@ private struct InspectorView: View {
                         slider(title: "Lens Correction", value: asset.developSettings.lensCorrectionAmount, range: 0...1) { $0.lensCorrectionAmount = $1 }
                         slider(title: "Sharpen", value: asset.developSettings.sharpenAmount, range: 0...2) { $0.sharpenAmount = $1 }
                         slider(title: "Noise Reduction", value: asset.developSettings.noiseReductionAmount, range: 0...1) { $0.noiseReductionAmount = $1 }
-                    }
-                }
 
-                if let coordinate = asset.gpsCoordinate {
-                    GroupBox("Map") {
-                        Map(initialPosition: .region(.init(
-                            center: .init(latitude: coordinate.latitude, longitude: coordinate.longitude),
-                            span: .init(latitudeDelta: 0.05, longitudeDelta: 0.05)
-                        ))) {
-                            Marker(URL(fileURLWithPath: asset.sourcePath).lastPathComponent, coordinate: .init(latitude: coordinate.latitude, longitude: coordinate.longitude))
-                        }
-                        .frame(height: 240)
+                        Divider()
+                        cropControls
                     }
                 }
             }
-            .padding()
+        }
+    }
+
+    private var cropControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Crop")
+                .font(.headline)
+            slider(title: "Zoom", value: 1 / max(asset.developSettings.cropRect.width, 0.01), range: 1...3) { settings, newValue in
+                let size = 1 / newValue
+                settings.cropRect.width = size
+                settings.cropRect.height = size
+                settings.cropRect.x = min(max(settings.cropRect.x, 0), 1 - size)
+                settings.cropRect.y = min(max(settings.cropRect.y, 0), 1 - size)
+            }
+            slider(title: "Horizontal", value: asset.developSettings.cropRect.x, range: 0...max(0.001, 1 - asset.developSettings.cropRect.width)) { settings, newValue in
+                settings.cropRect.x = newValue
+            }
+            slider(title: "Vertical", value: asset.developSettings.cropRect.y, range: 0...max(0.001, 1 - asset.developSettings.cropRect.height)) { settings, newValue in
+                settings.cropRect.y = newValue
+            }
+            Button("Reset Crop") {
+                state.updateSelectedAssetDevelopSettings { $0.cropRect = .fullFrame }
+            }
         }
     }
 
@@ -390,5 +530,25 @@ private struct EditorSlider: View {
                 in: range
             )
         }
+    }
+}
+
+private enum PreviewImageLoader {
+    static func loadOriginalPreview(from sourcePath: String, maxPixelSize: Int = 2200) -> NSImage? {
+        let url = URL(fileURLWithPath: sourcePath)
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+        ]
+
+        guard
+            let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+            let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+        else {
+            return NSImage(contentsOfFile: sourcePath)
+        }
+
+        return NSImage(cgImage: cgImage, size: .zero)
     }
 }

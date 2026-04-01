@@ -255,6 +255,11 @@ public struct AssetFilter: Sendable {
     public var cameraContains: String?
     public var lensContains: String?
     public var geotaggedOnly: Bool
+    public var capturedAfter: Date?
+    public var capturedBefore: Date?
+    public var locationLatitude: Double?
+    public var locationLongitude: Double?
+    public var locationRadiusKilometers: Double?
     public var albumID: UUID?
 
     public static let `default` = AssetFilter(
@@ -265,6 +270,11 @@ public struct AssetFilter: Sendable {
         cameraContains: nil,
         lensContains: nil,
         geotaggedOnly: false,
+        capturedAfter: nil,
+        capturedBefore: nil,
+        locationLatitude: nil,
+        locationLongitude: nil,
+        locationRadiusKilometers: nil,
         albumID: nil
     )
 
@@ -276,6 +286,11 @@ public struct AssetFilter: Sendable {
         cameraContains: String? = nil,
         lensContains: String? = nil,
         geotaggedOnly: Bool = false,
+        capturedAfter: Date? = nil,
+        capturedBefore: Date? = nil,
+        locationLatitude: Double? = nil,
+        locationLongitude: Double? = nil,
+        locationRadiusKilometers: Double? = nil,
         albumID: UUID? = nil
     ) {
         self.searchText = searchText
@@ -285,6 +300,11 @@ public struct AssetFilter: Sendable {
         self.cameraContains = cameraContains
         self.lensContains = lensContains
         self.geotaggedOnly = geotaggedOnly
+        self.capturedAfter = capturedAfter
+        self.capturedBefore = capturedBefore
+        self.locationLatitude = locationLatitude
+        self.locationLongitude = locationLongitude
+        self.locationRadiusKilometers = locationRadiusKilometers
         self.albumID = albumID
     }
 }

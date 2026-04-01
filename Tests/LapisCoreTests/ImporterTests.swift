@@ -136,6 +136,81 @@ import Testing
     #expect(processed.colorSpace?.name as String? == ExportService.colorSpace(for: .adobeRGB).name as String?)
 }
 
+@Test func catalogStoreFiltersByDateAndLocationBounds() throws {
+    let tempURL = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString).appendingPathExtension("sqlite")
+    let store = try GRDBCatalogStore(databaseURL: tempURL)
+
+    let firstAsset = ImportedAsset(
+        sourceURL: URL(fileURLWithPath: "/tmp/dated-1.dng"),
+        fileIdentity: "dated-1",
+        fileSize: 10,
+        modifiedAt: .now,
+        captureDate: Date(timeIntervalSince1970: 1_000),
+        cameraMake: "Ricoh",
+        cameraModel: "GR III",
+        lensModel: nil,
+        pixelWidth: 100,
+        pixelHeight: 100,
+        format: .dng,
+        gpsCoordinate: GPSCoordinate(latitude: 40.7128, longitude: -74.0060)
+    )
+    let secondAsset = ImportedAsset(
+        sourceURL: URL(fileURLWithPath: "/tmp/dated-2.cr3"),
+        fileIdentity: "dated-2",
+        fileSize: 10,
+        modifiedAt: .now,
+        captureDate: Date(timeIntervalSince1970: 2_000),
+        cameraMake: "Canon",
+        cameraModel: "R6",
+        lensModel: nil,
+        pixelWidth: 100,
+        pixelHeight: 100,
+        format: .cr3,
+        gpsCoordinate: GPSCoordinate(latitude: 34.0522, longitude: -118.2437)
+    )
+
+    _ = try store.importAsset(firstAsset)
+    _ = try store.importAsset(secondAsset)
+
+    let dateFiltered = try store.fetchAssets(filter: AssetFilter(capturedAfter: Date(timeIntervalSince1970: 1_500)))
+    #expect(dateFiltered.count == 1)
+    #expect(dateFiltered.first?.fileIdentity == "dated-2")
+
+    let locationFiltered = try store.fetchAssets(filter: AssetFilter(locationLatitude: 40.7128, locationLongitude: -74.0060, locationRadiusKilometers: 5))
+    #expect(locationFiltered.count == 1)
+    #expect(locationFiltered.first?.fileIdentity == "dated-1")
+}
+
+@Test func metadataWritebackIncludesGpsRefsAndAltitude() throws {
+    let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let imageURL = directory.appending(path: "frame.dng")
+    FileManager.default.createFile(atPath: imageURL.path(percentEncoded: false), contents: Data())
+
+    let asset = Asset(
+        sourcePath: imageURL.path(percentEncoded: false),
+        fileIdentity: "gps-xmp",
+        fileSize: 1,
+        modifiedAt: .now,
+        captureDate: .now,
+        cameraMake: nil,
+        cameraModel: nil,
+        lensModel: nil,
+        pixelWidth: 10,
+        pixelHeight: 10,
+        format: .dng,
+        gpsCoordinate: GPSCoordinate(latitude: -33.8688, longitude: 151.2093, altitude: 27),
+        keywords: ["travel"]
+    )
+
+    let sidecarURL = try MetadataWritebackService().writeXMPSidecar(for: asset)
+    let contents = try String(contentsOf: sidecarURL)
+
+    #expect(contents.contains("<exif:GPSLatitudeRef>S</exif:GPSLatitudeRef>"))
+    #expect(contents.contains("<exif:GPSLongitudeRef>E</exif:GPSLongitudeRef>"))
+    #expect(contents.contains("<exif:GPSAltitude>27.0</exif:GPSAltitude>"))
+}
+
 private struct MockDecoder: RawDecoder {
     let results: [String: ImportedAsset]
 
@@ -196,5 +271,6 @@ private final class MockCatalogStore: CatalogStore, @unchecked Sendable {
     func assignAssets(_ assetIDs: [UUID], to albumID: UUID) throws {}
     func updateMetadata(assetID: UUID, rating: Int?, flag: AssetFlag?, keywords: [String]?, gpsCoordinate: GPSCoordinate?) throws {}
     func saveDevelopSettings(assetID: UUID, settings: DevelopSettings) throws {}
+    func updatePreview(assetID: UUID, previewPath: String?, status: PreviewStatus) throws {}
     func geotagAssets(_ matches: [GeotagMatch]) throws -> Int { matches.count }
 }

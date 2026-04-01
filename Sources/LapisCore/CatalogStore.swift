@@ -15,6 +15,7 @@ public protocol CatalogStore: Sendable {
         gpsCoordinate: GPSCoordinate?
     ) throws
     func saveDevelopSettings(assetID: UUID, settings: DevelopSettings) throws
+    func updatePreview(assetID: UUID, previewPath: String?, status: PreviewStatus) throws
     func geotagAssets(_ matches: [GeotagMatch]) throws -> Int
 }
 

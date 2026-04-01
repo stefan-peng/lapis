@@ -10,9 +10,17 @@ public final class MetadataWritebackService: @unchecked Sendable {
         let keywordsXML = asset.keywords.map { "<rdf:li>\(escape($0))</rdf:li>" }.joined()
         let gpsXML: String
         if let gps = asset.gpsCoordinate {
+            let latitudeComponents = coordinateComponents(for: gps.latitude, positiveRef: "N", negativeRef: "S")
+            let longitudeComponents = coordinateComponents(for: gps.longitude, positiveRef: "E", negativeRef: "W")
+            let altitudeRef = (gps.altitude ?? 0) < 0 ? 1 : 0
             gpsXML = """
-            <exif:GPSLatitude>\(gps.latitude)</exif:GPSLatitude>
-            <exif:GPSLongitude>\(gps.longitude)</exif:GPSLongitude>
+            <exif:GPSLatitude>\(latitudeComponents.value)</exif:GPSLatitude>
+            <exif:GPSLatitudeRef>\(latitudeComponents.ref)</exif:GPSLatitudeRef>
+            <exif:GPSLongitude>\(longitudeComponents.value)</exif:GPSLongitude>
+            <exif:GPSLongitudeRef>\(longitudeComponents.ref)</exif:GPSLongitudeRef>
+            <exif:GPSVersionID>2.3.0.0</exif:GPSVersionID>
+            <exif:GPSAltitude>\(abs(gps.altitude ?? 0))</exif:GPSAltitude>
+            <exif:GPSAltitudeRef>\(altitudeRef)</exif:GPSAltitudeRef>
             """
         } else {
             gpsXML = ""
@@ -49,5 +57,15 @@ public final class MetadataWritebackService: @unchecked Sendable {
             .replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
+    }
+
+    private func coordinateComponents(for coordinate: Double, positiveRef: String, negativeRef: String) -> (value: String, ref: String) {
+        let absolute = abs(coordinate)
+        let degrees = Int(absolute)
+        let minutesFloat = (absolute - Double(degrees)) * 60
+        let minutes = Int(minutesFloat)
+        let seconds = (minutesFloat - Double(minutes)) * 60
+        let ref = coordinate >= 0 ? positiveRef : negativeRef
+        return ("\(degrees),\(minutes),\(String(format: "%.3f", seconds))", ref)
     }
 }

@@ -7,6 +7,7 @@ struct AppEnvironment {
     let geotagMatcher: TimestampGeotagMatcher
     let gpxParser: GPXParser
     let renderer: CoreImageDevelopRenderer
+    let previewService: PreviewService
     let exportService: ExportService
     let writebackService: MetadataWritebackService
 
@@ -25,6 +26,7 @@ struct AppEnvironment {
             geotagMatcher: TimestampGeotagMatcher(),
             gpxParser: GPXParser(),
             renderer: renderer,
+            previewService: previewService,
             exportService: ExportService(renderer: renderer),
             writebackService: MetadataWritebackService()
         )

@@ -17,6 +17,9 @@ public final class PreviewService: @unchecked Sendable {
             .replacingOccurrences(of: ":", with: "_")
             .replacingOccurrences(of: " ", with: "_")
         let targetURL = directoryURL.appending(path: "\(safeIdentifier).jpg")
+        if FileManager.default.fileExists(atPath: targetURL.path(percentEncoded: false)) {
+            try FileManager.default.removeItem(at: targetURL)
+        }
         guard let destination = CGImageDestinationCreateWithURL(targetURL as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else {
             throw PreviewError.destinationCreationFailed(targetURL.path(percentEncoded: false))
         }

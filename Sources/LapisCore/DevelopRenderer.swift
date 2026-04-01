@@ -67,6 +67,10 @@ public final class CoreImageDevelopRenderer: DevelopRenderer, @unchecked Sendabl
             image = image.transformed(by: transform)
         }
 
+        if settings.lensCorrectionAmount > 0 {
+            image = applyLensCorrection(to: image, amount: settings.lensCorrectionAmount)
+        }
+
         if settings.cropRect != .fullFrame {
             let extent = image.extent
             let crop = CGRect(
@@ -89,7 +93,14 @@ public final class CoreImageDevelopRenderer: DevelopRenderer, @unchecked Sendabl
     }
 
     private func loadImage(fileURL: URL) -> CIImage? {
-        CIImage(contentsOf: fileURL, options: [.applyOrientationProperty: true])
+        if let format = AssetFormat.from(fileExtension: fileURL.pathExtension), [.cr2, .cr3, .dng].contains(format) {
+            let rawFilter = CIRAWFilter(imageURL: fileURL)
+            if rawFilter?.isLensCorrectionSupported == true {
+                rawFilter?.isLensCorrectionEnabled = true
+            }
+            return rawFilter?.outputImage ?? CIImage(contentsOf: fileURL, options: [.applyOrientationProperty: true])
+        }
+        return CIImage(contentsOf: fileURL, options: [.applyOrientationProperty: true])
     }
 
     private func scaled(image: CIImage, maxPixelSize: Int) -> CIImage {
@@ -98,6 +109,16 @@ public final class CoreImageDevelopRenderer: DevelopRenderer, @unchecked Sendabl
         guard maxDimension > CGFloat(maxPixelSize), maxDimension > 0 else { return image }
         let scale = CGFloat(maxPixelSize) / maxDimension
         return image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+    }
+
+    private func applyLensCorrection(to image: CIImage, amount: Double) -> CIImage {
+        let filter = CIFilter.torusLensDistortion()
+        filter.inputImage = image
+        filter.center = CGPoint(x: image.extent.midX, y: image.extent.midY)
+        filter.radius = Float(max(image.extent.width, image.extent.height) * 0.65)
+        filter.width = Float(max(image.extent.width, image.extent.height) * 0.35)
+        filter.refraction = Float(1 + amount * 0.12)
+        return filter.outputImage?.cropped(to: image.extent) ?? image
     }
 }
 

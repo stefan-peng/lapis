@@ -79,6 +79,28 @@ public final class GRDBCatalogStore: CatalogStore, @unchecked Sendable {
             if filter.geotaggedOnly {
                 clauses.append("latitude IS NOT NULL AND longitude IS NOT NULL")
             }
+            if let capturedAfter = filter.capturedAfter {
+                clauses.append("capture_date >= ?")
+                arguments += [capturedAfter]
+            }
+            if let capturedBefore = filter.capturedBefore {
+                clauses.append("capture_date <= ?")
+                arguments += [capturedBefore]
+            }
+            if
+                let latitude = filter.locationLatitude,
+                let longitude = filter.locationLongitude,
+                let radiusKilometers = filter.locationRadiusKilometers,
+                radiusKilometers > 0
+            {
+                let latitudeDelta = radiusKilometers / 111.0
+                let longitudeScale = max(0.1, cos(latitude * .pi / 180))
+                let longitudeDelta = radiusKilometers / (111.0 * longitudeScale)
+                clauses.append("latitude BETWEEN ? AND ?")
+                arguments += [latitude - latitudeDelta, latitude + latitudeDelta]
+                clauses.append("longitude BETWEEN ? AND ?")
+                arguments += [longitude - longitudeDelta, longitude + longitudeDelta]
+            }
             if let albumID = filter.albumID {
                 clauses.append("album_assets.album_id = ?")
                 arguments += [albumID.uuidString]
@@ -174,6 +196,15 @@ public final class GRDBCatalogStore: CatalogStore, @unchecked Sendable {
             try db.execute(
                 sql: "UPDATE assets SET develop_settings_json = ? WHERE id = ?",
                 arguments: [try String(decoding: encoder.encode(settings), as: UTF8.self), assetID.uuidString]
+            )
+        }
+    }
+
+    public func updatePreview(assetID: UUID, previewPath: String?, status: PreviewStatus) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: "UPDATE assets SET preview_path = ?, preview_status = ? WHERE id = ?",
+                arguments: [previewPath, status.rawValue, assetID.uuidString]
             )
         }
     }
