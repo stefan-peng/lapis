@@ -1,3 +1,4 @@
+import AppKit
 import LapisCore
 import ImageIO
 import MapKit
@@ -6,14 +7,21 @@ import SwiftUI
 
 struct ContentView: View {
     @Bindable var state: AppState
+    @State private var showsInspector = true
 
     var body: some View {
         NavigationSplitView {
             sidebar
-        } content: {
-            contentPane
+                .navigationSplitViewColumnWidth(min: 250, ideal: 280, max: 360)
         } detail: {
-            detailPane
+            contentPane
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .inspector(isPresented: inspectorPresented) {
+            if let asset = state.selectedAsset {
+                MetadataSidebarView(state: state, asset: asset)
+                    .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
+            }
         }
         .navigationTitle("Lapis")
         .toolbar {
@@ -26,9 +34,20 @@ struct ContentView: View {
                 .pickerStyle(.segmented)
 
                 Button("Import Folder", action: state.importFolders)
+                    .keyboardShortcut("i", modifiers: [.command])
                 Button("Apply GPX", action: state.importGPX)
+                    .keyboardShortcut("g", modifiers: [.command, .shift])
                 Button("Export", action: state.exportSelection)
+                    .keyboardShortcut("e", modifiers: [.command])
                 Button("Write XMP", action: state.writeMetadataSidecar)
+                    .keyboardShortcut("x", modifiers: [.command, .shift])
+                Button {
+                    showsInspector.toggle()
+                } label: {
+                    Label(showsInspector ? "Hide Info" : "Show Info", systemImage: "sidebar.right")
+                }
+                .keyboardShortcut("0", modifiers: [.command, .option])
+                .disabled(state.selectedAsset == nil)
             }
         }
         .safeAreaInset(edge: .bottom) {
@@ -42,6 +61,13 @@ struct ContentView: View {
                     .background(.bar)
             }
         }
+    }
+
+    private var inspectorPresented: Binding<Bool> {
+        Binding(
+            get: { showsInspector && state.selectedAsset != nil },
+            set: { showsInspector = $0 }
+        )
     }
 
     private var sidebar: some View {
@@ -146,57 +172,52 @@ struct ContentView: View {
     }
 
     private var libraryPane: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("\(state.assets.count) photos")
-                .font(.headline)
-                .padding(.horizontal)
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 12) {
-                    ForEach(state.assets) { asset in
-                        AssetThumbnailView(asset: asset, isSelected: state.selectedAssetIDs.contains(asset.id))
-                            .onTapGesture {
-                                if state.selectedAssetIDs.contains(asset.id) {
-                                    state.selectedAssetIDs.remove(asset.id)
-                                } else {
-                                    state.selectedAssetIDs.insert(asset.id)
-                                }
-                            }
-                            .contextMenu {
-                                ForEach(state.albums) { album in
-                                    Button("Add to \(album.name)") {
-                                        state.selectedAssetIDs = [asset.id]
-                                        state.addSelectionToAlbum(album)
+        HSplitView {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("\(state.assets.count) photos")
+                    .font(.headline)
+                    .padding(.horizontal)
+                ScrollView {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 12) {
+                        ForEach(state.assets) { asset in
+                            AssetThumbnailView(asset: asset, isSelected: state.selectedAssetIDs.contains(asset.id))
+                                .onTapGesture {
+                                    if state.selectedAssetIDs.contains(asset.id) {
+                                        state.selectedAssetIDs.remove(asset.id)
+                                    } else {
+                                        state.selectedAssetIDs.insert(asset.id)
                                     }
                                 }
-                            }
+                                .onTapGesture(count: 2) {
+                                    state.selectedAssetIDs = [asset.id]
+                                    state.workspaceMode = .edit
+                                }
+                                .contextMenu {
+                                    ForEach(state.albums) { album in
+                                        Button("Add to \(album.name)") {
+                                            state.selectedAssetIDs = [asset.id]
+                                            state.addSelectionToAlbum(album)
+                                        }
+                                    }
+                                }
+                        }
                     }
+                    .padding(.horizontal)
+                    .padding(.bottom)
                 }
-                .padding(.horizontal)
-                .padding(.bottom)
+            }
+            .frame(minWidth: 520, maxWidth: .infinity, maxHeight: .infinity)
+
+            if state.selectedAsset == nil {
+                librarySupplementPane
+                    .frame(minWidth: 320, idealWidth: 360, maxWidth: 520, maxHeight: .infinity)
             }
         }
     }
 
     @ViewBuilder
-    private var editPane: some View {
-        if let asset = state.selectedAsset {
-            EditorWorkspaceView(state: state, asset: asset)
-        } else {
-            VStack(spacing: 12) {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 40))
-                    .foregroundStyle(.secondary)
-                Text("Select a single photo, then switch to Edit mode.")
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var detailPane: some View {
-        if let asset = state.selectedAsset {
-            MetadataSidebarView(state: state, asset: asset)
-        } else if state.workspaceMode == .library, state.compareAssets.count == 2 {
+    private var librarySupplementPane: some View {
+        if state.compareAssets.count == 2 {
             HStack(spacing: 16) {
                 ForEach(state.compareAssets) { asset in
                     AssetPreviewPanel(asset: asset)
@@ -211,6 +232,21 @@ struct ContentView: View {
                     .font(.system(size: 40))
                     .foregroundStyle(.secondary)
                 Text("Select one photo to inspect or two photos to compare.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var editPane: some View {
+        if let asset = state.selectedAsset {
+            EditorWorkspaceView(state: state, asset: asset)
+        } else {
+            VStack(spacing: 12) {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.secondary)
+                Text("Select a single photo, then switch to Edit mode.")
                     .foregroundStyle(.secondary)
             }
         }
@@ -419,117 +455,559 @@ private struct MetadataSidebarView: View {
             }
             .padding()
         }
+        .background(.regularMaterial)
     }
 }
 
 private struct EditorWorkspaceView: View {
     @Bindable var state: AppState
     let asset: Asset
+    @State private var session: EditorSession
+    @State private var cropAspectRatio = CropAspectRatioPreset.freeform
+    @State private var panGestureStartOffset: CGSize = .zero
+
+    init(state: AppState, asset: Asset) {
+        self._state = Bindable(state)
+        self.asset = asset
+        _session = State(initialValue: EditorSession(state: state, asset: asset))
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        HSplitView {
+            previewColumn
+                .frame(minWidth: 640, maxWidth: .infinity, maxHeight: .infinity)
+            inspectorColumn
+                .frame(minWidth: 320, idealWidth: 360, maxWidth: 420, maxHeight: .infinity)
+        }
+        .background(
+            LinearGradient(
+                colors: [
+                    Color(nsColor: .windowBackgroundColor),
+                    Color(nsColor: .underPageBackgroundColor),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .onChange(of: asset.id) { _, _ in
+            session.flushPendingEdits()
+            session = EditorSession(state: state, asset: asset)
+        }
+        .onDisappear {
+            session.flushPendingEdits()
+        }
+    }
+
+    private var previewColumn: some View {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text(URL(fileURLWithPath: asset.sourcePath).lastPathComponent)
-                    .font(.title3)
+                    .font(.title3.weight(.semibold))
                 Spacer()
-                Toggle("Show Original", isOn: $state.showOriginalInEditor)
-                    .toggleStyle(.switch)
-                Button("Reset Edits") {
-                    state.resetSelectedAssetDevelopSettings()
+                if session.isPersisting {
+                    Label("Saving", systemImage: "bolt.horizontal.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
+            previewCanvas
+            HStack(spacing: 10) {
+                Picker("Zoom", selection: Binding(
+                    get: { session.zoomMode },
+                    set: {
+                        session.setZoomMode($0)
+                        panGestureStartOffset = session.panOffset
+                    }
+                )) {
+                    Text("Fit").tag(EditorSession.ZoomMode.fit)
+                    Text("100%").tag(EditorSession.ZoomMode.actualPixels)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 150)
 
-            AssetPreviewPanel(asset: asset, useOriginalPreview: state.showOriginalInEditor)
-                .frame(maxWidth: .infinity, maxHeight: 420)
+                Toggle("Original", isOn: $session.showOriginal)
+                    .toggleStyle(.button)
 
-            ScrollView {
-                GroupBox("Develop") {
-                    VStack(spacing: 12) {
-                        slider(title: "Exposure", value: asset.developSettings.exposure, range: -4...4) { $0.exposure = $1 }
-                        slider(title: "Contrast", value: asset.developSettings.contrast, range: 0.5...2) { $0.contrast = $1 }
-                        slider(title: "Highlights", value: asset.developSettings.highlights, range: -1...1) { $0.highlights = $1 }
-                        slider(title: "Shadows", value: asset.developSettings.shadows, range: -1...1) { $0.shadows = $1 }
-                        slider(title: "Whites", value: asset.developSettings.whites, range: -1...1) { $0.whites = $1 }
-                        slider(title: "Blacks", value: asset.developSettings.blacks, range: -1...1) { $0.blacks = $1 }
-                        slider(title: "Vibrance", value: asset.developSettings.vibrance, range: -0.5...1.5) { $0.vibrance = $1 }
-                        slider(title: "Saturation", value: asset.developSettings.saturation, range: 0...2) { $0.saturation = $1 }
-                        slider(title: "Temperature", value: asset.developSettings.temperature, range: 2000...12000) { $0.temperature = $1 }
-                        slider(title: "Tint", value: asset.developSettings.tint, range: -150...150) { $0.tint = $1 }
-                        slider(title: "Straighten", value: asset.developSettings.straightenAngle, range: -15...15) { $0.straightenAngle = $1 }
-                        slider(title: "Curve Mid", value: asset.developSettings.toneCurve.inputPoint2, range: 0.2...0.8) { $0.toneCurve.inputPoint2 = $1 }
-                        slider(title: "Lens Correction", value: asset.developSettings.lensCorrectionAmount, range: 0...1) { $0.lensCorrectionAmount = $1 }
-                        slider(title: "Sharpen", value: asset.developSettings.sharpenAmount, range: 0...2) { $0.sharpenAmount = $1 }
-                        slider(title: "Noise Reduction", value: asset.developSettings.noiseReductionAmount, range: 0...1) { $0.noiseReductionAmount = $1 }
+                Spacer()
 
-                        Divider()
-                        cropControls
+                Button("Auto Enhance") {
+                    session.applyAutoEnhance()
+                }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+
+                Button("Reset Edits") {
+                    session.resetAll()
+                }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+            }
+        }
+        .padding(18)
+    }
+
+    private var previewCanvas: some View {
+        GeometryReader { proxy in
+            let previewImage = session.previewImage(
+                maxPixelSize: session.zoomMode == .fit ? max(2048, Int(max(proxy.size.width, proxy.size.height) * 2)) : nil
+            )
+            let imageExtent = previewImage?.extent ?? CGRect(
+                x: 0,
+                y: 0,
+                width: CGFloat(max(asset.pixelWidth, 1)),
+                height: CGFloat(max(asset.pixelHeight, 1))
+            )
+            let imageFrame = fittedImageRect(
+                imageExtent: imageExtent,
+                containerSize: proxy.size,
+                zoomMode: session.zoomMode,
+                panOffset: session.panOffset
+            )
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 22)
+                    .fill(Color.black.opacity(0.9))
+                MetalPreviewView(
+                    context: session.renderer.interactiveContext,
+                    image: previewImage,
+                    zoomMode: session.zoomMode,
+                    panOffset: session.panOffset
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 22))
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            session.pan(
+                                from: panGestureStartOffset,
+                                by: value.translation,
+                                in: proxy.size,
+                                imageExtent: imageExtent
+                            )
+                        }
+                        .onEnded { _ in
+                            panGestureStartOffset = session.panOffset
+                        }
+                )
+
+                if !session.showOriginal {
+                    CropOverlayView(
+                        cropRect: session.currentSettings.cropRect,
+                        imageFrame: imageFrame,
+                        aspectRatio: cropAspectRatio,
+                        onChange: { session.setCropRect($0) }
+                    )
+                    .allowsHitTesting(session.zoomMode == .fit)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black.opacity(0.94))
+        .clipShape(RoundedRectangle(cornerRadius: 22))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22)
+                .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
+        )
+    }
+
+    private var inspectorColumn: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                EditorInspectorSection(title: "Light") {
+                    sliderRow("Exposure", value: session.currentSettings.exposure, range: -4...4, defaultValue: DevelopSettings.default.exposure, autoControl: .exposure) { newValue in
+                        session.update { $0.exposure = newValue }
+                    } onReset: {
+                        session.reset(\.exposure)
+                    }
+                    sliderRow("Contrast", value: session.currentSettings.contrast, range: 0.5...2, defaultValue: DevelopSettings.default.contrast) { newValue in
+                        session.update { $0.contrast = newValue }
+                    } onReset: {
+                        session.reset(\.contrast)
+                    }
+                    sliderRow("Highlights", value: session.currentSettings.highlights, range: -1...1, defaultValue: DevelopSettings.default.highlights, autoControl: .highlights) { newValue in
+                        session.update { $0.highlights = newValue }
+                    } onReset: {
+                        session.reset(\.highlights)
+                    }
+                    sliderRow("Shadows", value: session.currentSettings.shadows, range: -1...1, defaultValue: DevelopSettings.default.shadows, autoControl: .shadows) { newValue in
+                        session.update { $0.shadows = newValue }
+                    } onReset: {
+                        session.reset(\.shadows)
+                    }
+                    sliderRow("Whites", value: session.currentSettings.whites, range: -1...1, defaultValue: DevelopSettings.default.whites, autoControl: .whites) { newValue in
+                        session.update { $0.whites = newValue }
+                    } onReset: {
+                        session.reset(\.whites)
+                    }
+                    sliderRow("Blacks", value: session.currentSettings.blacks, range: -1...1, defaultValue: DevelopSettings.default.blacks, autoControl: .blacks) { newValue in
+                        session.update { $0.blacks = newValue }
+                    } onReset: {
+                        session.reset(\.blacks)
+                    }
+                }
+
+                EditorInspectorSection(title: "Color") {
+                    sliderRow("Temperature", value: session.currentSettings.temperature, range: 2000...12000, defaultValue: DevelopSettings.default.temperature) { newValue in
+                        session.update { $0.temperature = newValue }
+                    } onReset: {
+                        session.reset(\.temperature)
+                    }
+                    sliderRow("Tint", value: session.currentSettings.tint, range: -150...150, defaultValue: DevelopSettings.default.tint) { newValue in
+                        session.update { $0.tint = newValue }
+                    } onReset: {
+                        session.reset(\.tint)
+                    }
+                    sliderRow("Vibrance", value: session.currentSettings.vibrance, range: -0.5...1.5, defaultValue: DevelopSettings.default.vibrance, autoControl: .vibrance) { newValue in
+                        session.update { $0.vibrance = newValue }
+                    } onReset: {
+                        session.reset(\.vibrance)
+                    }
+                    sliderRow("Saturation", value: session.currentSettings.saturation, range: 0...2, defaultValue: DevelopSettings.default.saturation) { newValue in
+                        session.update { $0.saturation = newValue }
+                    } onReset: {
+                        session.reset(\.saturation)
+                    }
+                    sliderRow("Curve Mid", value: session.currentSettings.toneCurve.inputPoint2, range: 0.2...0.8, defaultValue: DevelopSettings.default.toneCurve.inputPoint2) { newValue in
+                        session.update { $0.toneCurve.inputPoint2 = newValue }
+                    } onReset: {
+                        session.update { $0.toneCurve.inputPoint2 = DevelopSettings.default.toneCurve.inputPoint2 }
+                    }
+                }
+
+                EditorInspectorSection(title: "Detail") {
+                    sliderRow("Sharpen", value: session.currentSettings.sharpenAmount, range: 0...2, defaultValue: DevelopSettings.default.sharpenAmount) { newValue in
+                        session.update { $0.sharpenAmount = newValue }
+                    } onReset: {
+                        session.reset(\.sharpenAmount)
+                    }
+                    sliderRow("Luma NR", value: session.currentSettings.luminanceNoiseReductionAmount, range: 0...1, defaultValue: DevelopSettings.default.luminanceNoiseReductionAmount) { newValue in
+                        session.update { $0.luminanceNoiseReductionAmount = newValue }
+                    } onReset: {
+                        session.reset(\.luminanceNoiseReductionAmount)
+                    }
+                    sliderRow("Chroma NR", value: session.currentSettings.chrominanceNoiseReductionAmount, range: 0...1, defaultValue: DevelopSettings.default.chrominanceNoiseReductionAmount) { newValue in
+                        session.update { $0.chrominanceNoiseReductionAmount = newValue }
+                    } onReset: {
+                        session.reset(\.chrominanceNoiseReductionAmount)
+                    }
+                }
+
+                EditorInspectorSection(title: "Optics") {
+                    HStack {
+                        Text("Auto optics")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Apply") {
+                            session.applyAutoOptics()
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                    sliderRow("Lens Correction", value: session.currentSettings.lensCorrectionAmount, range: 0...1, defaultValue: DevelopSettings.default.lensCorrectionAmount) { newValue in
+                        session.update { $0.lensCorrectionAmount = newValue }
+                    } onReset: {
+                        session.reset(\.lensCorrectionAmount)
+                    }
+                    sliderRow("Vignette", value: session.currentSettings.vignetteCorrectionAmount, range: 0...1, defaultValue: DevelopSettings.default.vignetteCorrectionAmount) { newValue in
+                        session.update { $0.vignetteCorrectionAmount = newValue }
+                    } onReset: {
+                        session.reset(\.vignetteCorrectionAmount)
+                    }
+                    sliderRow("Straighten", value: session.currentSettings.straightenAngle, range: -15...15, defaultValue: DevelopSettings.default.straightenAngle) { newValue in
+                        session.update { $0.straightenAngle = newValue }
+                    } onReset: {
+                        session.reset(\.straightenAngle)
+                    }
+                }
+
+                EditorInspectorSection(title: "Crop") {
+                    Picker("Aspect Ratio", selection: $cropAspectRatio) {
+                        ForEach(CropAspectRatioPreset.allCases) { ratio in
+                            Text(ratio.label).tag(ratio)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .onChange(of: cropAspectRatio) { _, newValue in
+                        session.setCropRect(newValue.adjustedRect(from: session.currentSettings.cropRect))
+                    }
+
+                    Text("Drag inside the frame to move the crop. Drag the corners to resize.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Button("Reset Crop") {
+                        cropAspectRatio = .freeform
+                        session.resetCrop()
                     }
                 }
             }
+            .padding(18)
         }
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .padding(.vertical, 18)
+        .padding(.trailing, 18)
     }
 
-    private var cropControls: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Crop")
-                .font(.headline)
-            slider(title: "Zoom", value: 1 / max(asset.developSettings.cropRect.width, 0.01), range: 1...3) { settings, newValue in
-                let size = 1 / newValue
-                settings.cropRect.width = size
-                settings.cropRect.height = size
-                settings.cropRect.x = min(max(settings.cropRect.x, 0), 1 - size)
-                settings.cropRect.y = min(max(settings.cropRect.y, 0), 1 - size)
-            }
-            slider(title: "Horizontal", value: asset.developSettings.cropRect.x, range: 0...max(0.001, 1 - asset.developSettings.cropRect.width)) { settings, newValue in
-                settings.cropRect.x = newValue
-            }
-            slider(title: "Vertical", value: asset.developSettings.cropRect.y, range: 0...max(0.001, 1 - asset.developSettings.cropRect.height)) { settings, newValue in
-                settings.cropRect.y = newValue
-            }
-            Button("Reset Crop") {
-                state.updateSelectedAssetDevelopSettings { $0.cropRect = .fullFrame }
-            }
-        }
-    }
-
-    private func slider(
-        title: String,
+    private func sliderRow(
+        _ title: String,
         value: Double,
         range: ClosedRange<Double>,
-        update: @escaping (inout DevelopSettings, Double) -> Void
+        defaultValue: Double,
+        autoControl: AutoAdjustmentControl? = nil,
+        onChange: @escaping (Double) -> Void,
+        onReset: @escaping () -> Void
     ) -> some View {
-        EditorSlider(title: title, value: value, range: range) { newValue in
-            state.updateSelectedAssetDevelopSettings { update(&$0, newValue) }
-        }
+        EditorSliderRow(
+            title: title,
+            value: value,
+            range: range,
+            defaultValue: defaultValue,
+            autoAction: autoControl.map { control in
+                { session.applyAuto(control) }
+            },
+            onChange: onChange,
+            onReset: onReset
+        )
     }
 }
 
-private struct EditorSlider: View {
+private struct EditorInspectorSection<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.headline)
+            content
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(Color.white.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
+        )
+    }
+}
+
+private struct EditorSliderRow: View {
     let title: String
     let value: Double
     let range: ClosedRange<Double>
+    let defaultValue: Double
+    let autoAction: (() -> Void)?
     let onChange: (Double) -> Void
+    let onReset: () -> Void
+
+    private var isEdited: Bool {
+        abs(value - defaultValue) > 0.0001
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(isEdited ? Color.accentColor : Color.clear)
+                    .frame(width: 8, height: 8)
                 Text(title)
+                    .font(.subheadline.weight(.medium))
                 Spacer()
+                if let autoAction {
+                    Button("Auto", action: autoAction)
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                }
+                Button("Reset", action: onReset)
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                    .foregroundStyle(isEdited ? .secondary : .tertiary)
+                    .disabled(!isEdited)
                 Text(value.formatted(.number.precision(.fractionLength(2))))
+                    .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
+                    .frame(width: 56, alignment: .trailing)
             }
             Slider(
                 value: Binding(
                     get: { value },
-                    set: { newValue in
-                        Task { @MainActor in
-                            onChange(newValue)
-                        }
-                    }
+                    set: { onChange($0) }
                 ),
                 in: range
             )
         }
+    }
+}
+
+private enum CropAspectRatioPreset: String, CaseIterable, Identifiable {
+    case freeform
+    case square
+    case portrait
+    case landscape
+    case widescreen
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .freeform: "Freeform"
+        case .square: "1:1"
+        case .portrait: "4:5"
+        case .landscape: "3:2"
+        case .widescreen: "16:9"
+        }
+    }
+
+    var size: CGSize? {
+        switch self {
+        case .freeform: nil
+        case .square: CGSize(width: 1, height: 1)
+        case .portrait: CGSize(width: 4, height: 5)
+        case .landscape: CGSize(width: 3, height: 2)
+        case .widescreen: CGSize(width: 16, height: 9)
+        }
+    }
+
+    func adjustedRect(from rect: CropRect) -> CropRect {
+        guard let size else { return rect }
+        let ratio = size.width / size.height
+        let centerX = rect.x + (rect.width / 2)
+        let centerY = rect.y + (rect.height / 2)
+        var width = min(rect.width, 1)
+        var height = width / ratio
+        if height > 1 {
+            height = 1
+            width = height * ratio
+        }
+        return CropRect(
+            x: min(max(centerX - (width / 2), 0), 1 - width),
+            y: min(max(centerY - (height / 2), 0), 1 - height),
+            width: width,
+            height: height
+        )
+    }
+}
+
+private struct CropOverlayView: View {
+    let cropRect: CropRect
+    let imageFrame: CGRect
+    let aspectRatio: CropAspectRatioPreset
+    let onChange: (CropRect) -> Void
+
+    var body: some View {
+        let overlayRect = CGRect(
+            x: imageFrame.minX + (cropRect.x * imageFrame.width),
+            y: imageFrame.minY + (cropRect.y * imageFrame.height),
+            width: cropRect.width * imageFrame.width,
+            height: cropRect.height * imageFrame.height
+        )
+
+        ZStack {
+            Path { path in
+                path.addRect(imageFrame)
+                path.addRect(overlayRect)
+            }
+            .fill(Color.black.opacity(0.4), style: FillStyle(eoFill: true))
+
+            Rectangle()
+                .strokeBorder(Color.white.opacity(0.95), lineWidth: 1.5)
+                .frame(width: overlayRect.width, height: overlayRect.height)
+                .position(x: overlayRect.midX, y: overlayRect.midY)
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            let deltaX = value.translation.width / imageFrame.width
+                            let deltaY = value.translation.height / imageFrame.height
+                            onChange(
+                                CropRect(
+                                    x: cropRect.x + deltaX,
+                                    y: cropRect.y + deltaY,
+                                    width: cropRect.width,
+                                    height: cropRect.height
+                                )
+                            )
+                        }
+                )
+
+            ForEach(CropHandle.allCases) { handle in
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 12, height: 12)
+                    .position(handle.position(in: overlayRect))
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                onChange(handle.updatedRect(from: cropRect, translation: value.translation, imageFrame: imageFrame, aspectRatio: aspectRatio))
+                            }
+                    )
+            }
+        }
+        .allowsHitTesting(imageFrame.width > 0 && imageFrame.height > 0)
+    }
+}
+
+private enum CropHandle: CaseIterable, Identifiable {
+    case topLeft
+    case topRight
+    case bottomLeft
+    case bottomRight
+
+    var id: String {
+        switch self {
+        case .topLeft: "topLeft"
+        case .topRight: "topRight"
+        case .bottomLeft: "bottomLeft"
+        case .bottomRight: "bottomRight"
+        }
+    }
+
+    func position(in rect: CGRect) -> CGPoint {
+        switch self {
+        case .topLeft: CGPoint(x: rect.minX, y: rect.minY)
+        case .topRight: CGPoint(x: rect.maxX, y: rect.minY)
+        case .bottomLeft: CGPoint(x: rect.minX, y: rect.maxY)
+        case .bottomRight: CGPoint(x: rect.maxX, y: rect.maxY)
+        }
+    }
+
+    func updatedRect(from rect: CropRect, translation: CGSize, imageFrame: CGRect, aspectRatio: CropAspectRatioPreset) -> CropRect {
+        let dx = translation.width / imageFrame.width
+        let dy = translation.height / imageFrame.height
+
+        var next = rect
+        switch self {
+        case .topLeft:
+            next.x += dx
+            next.y += dy
+            next.width -= dx
+            next.height -= dy
+        case .topRight:
+            next.y += dy
+            next.width += dx
+            next.height -= dy
+        case .bottomLeft:
+            next.x += dx
+            next.width -= dx
+            next.height += dy
+        case .bottomRight:
+            next.width += dx
+            next.height += dy
+        }
+
+        if let ratioSize = aspectRatio.size {
+            let ratio = ratioSize.width / ratioSize.height
+            next.height = next.width / ratio
+            if self == .topLeft || self == .topRight {
+                next.y = rect.y + rect.height - next.height
+            }
+        }
+
+        let width = min(max(next.width, 0.05), 1)
+        let height = min(max(next.height, 0.05), 1)
+        let x = min(max(next.x, 0), 1 - width)
+        let y = min(max(next.y, 0), 1 - height)
+        return CropRect(x: x, y: y, width: width, height: height)
     }
 }
 

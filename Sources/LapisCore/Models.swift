@@ -92,6 +92,8 @@ public struct ToneCurve: Codable, Hashable, Sendable {
 }
 
 public struct DevelopSettings: Codable, Hashable, Sendable {
+    public static let latestSchemaVersion = 2
+
     public var temperature: Double
     public var tint: Double
     public var exposure: Double
@@ -106,8 +108,10 @@ public struct DevelopSettings: Codable, Hashable, Sendable {
     public var cropRect: CropRect
     public var toneCurve: ToneCurve
     public var lensCorrectionAmount: Double
+    public var vignetteCorrectionAmount: Double
     public var sharpenAmount: Double
-    public var noiseReductionAmount: Double
+    public var luminanceNoiseReductionAmount: Double
+    public var chrominanceNoiseReductionAmount: Double
 
     public static let `default` = DevelopSettings(
         temperature: 6500,
@@ -124,8 +128,10 @@ public struct DevelopSettings: Codable, Hashable, Sendable {
         cropRect: .fullFrame,
         toneCurve: .linear,
         lensCorrectionAmount: 0,
+        vignetteCorrectionAmount: 0,
         sharpenAmount: 0.4,
-        noiseReductionAmount: 0.1
+        luminanceNoiseReductionAmount: 0,
+        chrominanceNoiseReductionAmount: 0.05
     )
 
     public init(
@@ -143,8 +149,10 @@ public struct DevelopSettings: Codable, Hashable, Sendable {
         cropRect: CropRect,
         toneCurve: ToneCurve,
         lensCorrectionAmount: Double,
+        vignetteCorrectionAmount: Double,
         sharpenAmount: Double,
-        noiseReductionAmount: Double
+        luminanceNoiseReductionAmount: Double,
+        chrominanceNoiseReductionAmount: Double
     ) {
         self.temperature = temperature
         self.tint = tint
@@ -160,8 +168,85 @@ public struct DevelopSettings: Codable, Hashable, Sendable {
         self.cropRect = cropRect
         self.toneCurve = toneCurve
         self.lensCorrectionAmount = lensCorrectionAmount
+        self.vignetteCorrectionAmount = vignetteCorrectionAmount
         self.sharpenAmount = sharpenAmount
-        self.noiseReductionAmount = noiseReductionAmount
+        self.luminanceNoiseReductionAmount = luminanceNoiseReductionAmount
+        self.chrominanceNoiseReductionAmount = chrominanceNoiseReductionAmount
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case temperature
+        case tint
+        case exposure
+        case contrast
+        case highlights
+        case shadows
+        case whites
+        case blacks
+        case vibrance
+        case saturation
+        case straightenAngle
+        case cropRect
+        case toneCurve
+        case lensCorrectionAmount
+        case vignetteCorrectionAmount
+        case sharpenAmount
+        case luminanceNoiseReductionAmount
+        case chrominanceNoiseReductionAmount
+        case noiseReductionAmount
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        _ = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 0
+
+        temperature = try container.decodeIfPresent(Double.self, forKey: .temperature) ?? Self.default.temperature
+        tint = try container.decodeIfPresent(Double.self, forKey: .tint) ?? Self.default.tint
+        exposure = try container.decodeIfPresent(Double.self, forKey: .exposure) ?? Self.default.exposure
+        contrast = try container.decodeIfPresent(Double.self, forKey: .contrast) ?? Self.default.contrast
+        highlights = try container.decodeIfPresent(Double.self, forKey: .highlights) ?? Self.default.highlights
+        shadows = try container.decodeIfPresent(Double.self, forKey: .shadows) ?? Self.default.shadows
+        whites = try container.decodeIfPresent(Double.self, forKey: .whites) ?? Self.default.whites
+        blacks = try container.decodeIfPresent(Double.self, forKey: .blacks) ?? Self.default.blacks
+        vibrance = try container.decodeIfPresent(Double.self, forKey: .vibrance) ?? Self.default.vibrance
+        saturation = try container.decodeIfPresent(Double.self, forKey: .saturation) ?? Self.default.saturation
+        straightenAngle = try container.decodeIfPresent(Double.self, forKey: .straightenAngle) ?? Self.default.straightenAngle
+        cropRect = try container.decodeIfPresent(CropRect.self, forKey: .cropRect) ?? Self.default.cropRect
+        toneCurve = try container.decodeIfPresent(ToneCurve.self, forKey: .toneCurve) ?? Self.default.toneCurve
+        lensCorrectionAmount = try container.decodeIfPresent(Double.self, forKey: .lensCorrectionAmount) ?? Self.default.lensCorrectionAmount
+        vignetteCorrectionAmount = try container.decodeIfPresent(Double.self, forKey: .vignetteCorrectionAmount) ?? Self.default.vignetteCorrectionAmount
+        sharpenAmount = try container.decodeIfPresent(Double.self, forKey: .sharpenAmount) ?? Self.default.sharpenAmount
+
+        let legacyNoiseReductionAmount = try container.decodeIfPresent(Double.self, forKey: .noiseReductionAmount)
+        luminanceNoiseReductionAmount = try container.decodeIfPresent(Double.self, forKey: .luminanceNoiseReductionAmount)
+            ?? legacyNoiseReductionAmount
+            ?? Self.default.luminanceNoiseReductionAmount
+        chrominanceNoiseReductionAmount = try container.decodeIfPresent(Double.self, forKey: .chrominanceNoiseReductionAmount)
+            ?? min(max((legacyNoiseReductionAmount ?? Self.default.chrominanceNoiseReductionAmount) * 0.5, 0), 1)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(Self.latestSchemaVersion, forKey: .schemaVersion)
+        try container.encode(temperature, forKey: .temperature)
+        try container.encode(tint, forKey: .tint)
+        try container.encode(exposure, forKey: .exposure)
+        try container.encode(contrast, forKey: .contrast)
+        try container.encode(highlights, forKey: .highlights)
+        try container.encode(shadows, forKey: .shadows)
+        try container.encode(whites, forKey: .whites)
+        try container.encode(blacks, forKey: .blacks)
+        try container.encode(vibrance, forKey: .vibrance)
+        try container.encode(saturation, forKey: .saturation)
+        try container.encode(straightenAngle, forKey: .straightenAngle)
+        try container.encode(cropRect, forKey: .cropRect)
+        try container.encode(toneCurve, forKey: .toneCurve)
+        try container.encode(lensCorrectionAmount, forKey: .lensCorrectionAmount)
+        try container.encode(vignetteCorrectionAmount, forKey: .vignetteCorrectionAmount)
+        try container.encode(sharpenAmount, forKey: .sharpenAmount)
+        try container.encode(luminanceNoiseReductionAmount, forKey: .luminanceNoiseReductionAmount)
+        try container.encode(chrominanceNoiseReductionAmount, forKey: .chrominanceNoiseReductionAmount)
     }
 }
 
@@ -388,6 +473,28 @@ public struct ExportJob: Codable, Sendable {
         self.assetIDs = assetIDs
         self.destinationDirectory = destinationDirectory
         self.createdAt = createdAt
+    }
+}
+
+public struct ExportFailure: Codable, Hashable, Sendable {
+    public var assetID: UUID
+    public var sourcePath: String
+    public var message: String
+
+    public init(assetID: UUID, sourcePath: String, message: String) {
+        self.assetID = assetID
+        self.sourcePath = sourcePath
+        self.message = message
+    }
+}
+
+public struct ExportReport: Codable, Hashable, Sendable {
+    public var exportedURLs: [URL]
+    public var failures: [ExportFailure]
+
+    public init(exportedURLs: [URL] = [], failures: [ExportFailure] = []) {
+        self.exportedURLs = exportedURLs
+        self.failures = failures
     }
 }
 

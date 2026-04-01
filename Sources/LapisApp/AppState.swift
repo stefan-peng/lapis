@@ -16,6 +16,15 @@ final class AppState {
 
     static let defaultExportPresets: [ExportPreset] = [
         ExportPreset(
+            name: "High Quality JPEG",
+            format: .jpeg,
+            colorSpace: .sRGB,
+            quality: 0.94,
+            maxPixelSize: nil,
+            outputSharpening: 0.2,
+            fileNameTemplate: "{name}"
+        ),
+        ExportPreset(
             name: "Web JPEG",
             format: .jpeg,
             colorSpace: .sRGB,
@@ -219,8 +228,12 @@ final class AppState {
 
         guard panel.runModal() == .OK, let destinationURL = panel.url else { return }
         do {
-            _ = try environment.exportService.export(assets: selection, preset: preset, destinationDirectory: destinationURL)
-            statusMessage = "Exported \(selection.count) photo(s)"
+            let report = try environment.exportService.export(assets: selection, preset: preset, destinationDirectory: destinationURL)
+            if report.failures.isEmpty {
+                statusMessage = "Exported \(report.exportedURLs.count) photo(s)"
+            } else {
+                statusMessage = "Exported \(report.exportedURLs.count) photo(s), \(report.failures.count) failed"
+            }
         } catch {
             statusMessage = error.localizedDescription
         }
@@ -271,6 +284,15 @@ final class AppState {
         } catch {
             try? environment.catalogStore.updatePreview(assetID: asset.id, previewPath: nil, status: .failed)
             throw error
+        }
+    }
+
+    func applyEditorCommit(assetID: UUID, settings: DevelopSettings, previewPath: String?) {
+        guard let index = assets.firstIndex(where: { $0.id == assetID }) else { return }
+        assets[index].developSettings = settings
+        if let previewPath {
+            assets[index].previewPath = previewPath
+            assets[index].previewStatus = .ready
         }
     }
 }

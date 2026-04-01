@@ -39,5 +39,9 @@ struct LapisAppMain: App {
             .frame(minWidth: 1240, minHeight: 780)
         }
         .windowResizability(.contentSize)
+        .commands {
+            SidebarCommands()
+            InspectorCommands()
+        }
     }
 }

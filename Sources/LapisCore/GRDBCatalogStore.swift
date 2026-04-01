@@ -312,6 +312,30 @@ public final class GRDBCatalogStore: CatalogStore, @unchecked Sendable {
                 table.primaryKey(["album_id", "asset_id"])
             }
         }
+        migrator.registerMigration("migrateDevelopSettingsSchemaV2") { db in
+            let rows = try Row.fetchAll(db, sql: "SELECT id, develop_settings_json FROM assets")
+            let decoder = JSONDecoder()
+            let encoder = JSONEncoder()
+
+            for row in rows {
+                guard
+                    let assetID: String = row["id"],
+                    let developSettingsJSON: String = row["develop_settings_json"],
+                    !developSettingsJSON.isEmpty
+                else {
+                    continue
+                }
+
+                let settings = try decoder.decode(DevelopSettings.self, from: Data(developSettingsJSON.utf8))
+                let normalizedJSON = try String(decoding: encoder.encode(settings), as: UTF8.self)
+                if normalizedJSON != developSettingsJSON {
+                    try db.execute(
+                        sql: "UPDATE assets SET develop_settings_json = ? WHERE id = ?",
+                        arguments: [normalizedJSON, assetID]
+                    )
+                }
+            }
+        }
         return migrator
     }
 }

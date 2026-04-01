@@ -1,7 +1,10 @@
 import CoreGraphics
 import CoreImage
 import Foundation
+import GRDB
+import ImageIO
 import Testing
+import UniformTypeIdentifiers
 @testable import LapisCore
 
 @Test func timestampGeotagMatcherUsesNearestPointAfterOffsets() throws {
@@ -211,6 +214,216 @@ import Testing
     #expect(contents.contains("<exif:GPSAltitude>27.0</exif:GPSAltitude>"))
 }
 
+@Test func catalogStorePersistsExpandedDevelopSettings() throws {
+    let tempURL = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString).appendingPathExtension("sqlite")
+    let store = try GRDBCatalogStore(databaseURL: tempURL)
+
+    let imported = ImportedAsset(
+        sourceURL: URL(fileURLWithPath: "/tmp/edited.cr3"),
+        fileIdentity: "edited-asset",
+        fileSize: 10,
+        modifiedAt: .now,
+        captureDate: .now,
+        cameraMake: "Canon",
+        cameraModel: "R6",
+        lensModel: "24-70",
+        pixelWidth: 100,
+        pixelHeight: 100,
+        format: .cr3,
+        gpsCoordinate: nil
+    )
+
+    let disposition = try store.importAsset(imported)
+    guard case let .imported(asset) = disposition else {
+        Issue.record("Expected imported asset")
+        return
+    }
+
+    let settings = DevelopSettings(
+        temperature: 6000,
+        tint: 12,
+        exposure: 0.35,
+        contrast: 1.15,
+        highlights: -0.2,
+        shadows: 0.3,
+        whites: 0.1,
+        blacks: -0.15,
+        vibrance: 0.25,
+        saturation: 1.05,
+        straightenAngle: 1.5,
+        cropRect: CropRect(x: 0.1, y: 0.1, width: 0.8, height: 0.7),
+        toneCurve: ToneCurve(inputPoint0: 0, inputPoint1: 0.2, inputPoint2: 0.45, inputPoint3: 0.78, inputPoint4: 1),
+        lensCorrectionAmount: 0.8,
+        vignetteCorrectionAmount: 0.3,
+        sharpenAmount: 0.9,
+        luminanceNoiseReductionAmount: 0.22,
+        chrominanceNoiseReductionAmount: 0.41
+    )
+
+    try store.saveDevelopSettings(assetID: asset.id, settings: settings)
+    let fetched = try #require(try store.fetchAsset(id: asset.id))
+
+    #expect(fetched.developSettings.vignetteCorrectionAmount == 0.3)
+    #expect(fetched.developSettings.luminanceNoiseReductionAmount == 0.22)
+    #expect(fetched.developSettings.chrominanceNoiseReductionAmount == 0.41)
+    #expect(fetched.developSettings.cropRect == settings.cropRect)
+}
+
+@Test func developSettingsDecodesLegacyNoiseReductionShape() throws {
+    let legacyJSON = """
+    {
+      "temperature": 6500,
+      "tint": 0,
+      "exposure": 0,
+      "contrast": 1,
+      "highlights": 0,
+      "shadows": 0,
+      "whites": 0,
+      "blacks": 0,
+      "vibrance": 0,
+      "saturation": 1,
+      "straightenAngle": 0,
+      "cropRect": { "x": 0, "y": 0, "width": 1, "height": 1 },
+      "toneCurve": {
+        "inputPoint0": 0,
+        "inputPoint1": 0.25,
+        "inputPoint2": 0.5,
+        "inputPoint3": 0.75,
+        "inputPoint4": 1
+      },
+      "lensCorrectionAmount": 0,
+      "sharpenAmount": 0.4,
+      "noiseReductionAmount": 0.1
+    }
+    """
+
+    let settings = try JSONDecoder().decode(DevelopSettings.self, from: Data(legacyJSON.utf8))
+
+    #expect(settings.luminanceNoiseReductionAmount == 0.1)
+    #expect(settings.chrominanceNoiseReductionAmount == 0.05)
+    #expect(settings.vignetteCorrectionAmount == 0)
+    let reencodedJSON = try String(decoding: JSONEncoder().encode(settings), as: UTF8.self)
+    #expect(reencodedJSON.contains("\"schemaVersion\":2"))
+}
+
+@Test func catalogMigrationRewritesLegacyDevelopSettingsJSON() throws {
+    let tempURL = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString).appendingPathExtension("sqlite")
+    let store = try GRDBCatalogStore(databaseURL: tempURL)
+
+    let imported = ImportedAsset(
+        sourceURL: URL(fileURLWithPath: "/tmp/migrate.cr3"),
+        fileIdentity: "migrate-asset",
+        fileSize: 10,
+        modifiedAt: .now,
+        captureDate: .now,
+        cameraMake: nil,
+        cameraModel: nil,
+        lensModel: nil,
+        pixelWidth: 100,
+        pixelHeight: 100,
+        format: .cr3,
+        gpsCoordinate: nil
+    )
+
+    let disposition = try store.importAsset(imported)
+    guard case let .imported(asset) = disposition else {
+        Issue.record("Expected imported asset")
+        return
+    }
+
+    let legacyJSON = """
+    {"whites":0,"highlights":0,"shadows":0,"straightenAngle":0,"temperature":6500,"tint":0,"cropRect":{"x":0,"width":1,"y":0,"height":1},"toneCurve":{"inputPoint3":0.75,"inputPoint2":0.5,"inputPoint4":1,"inputPoint1":0.25,"inputPoint0":0},"noiseReductionAmount":0.1,"sharpenAmount":0.4,"exposure":0,"saturation":1,"contrast":1,"lensCorrectionAmount":0,"blacks":0,"vibrance":0}
+    """
+    let dbQueue = try GRDB.DatabaseQueue(path: tempURL.path(percentEncoded: false))
+    try dbQueue.write { db in
+        try db.execute(
+            sql: "UPDATE assets SET develop_settings_json = ? WHERE id = ?",
+            arguments: [legacyJSON, asset.id.uuidString]
+        )
+        try db.execute(
+            sql: "DELETE FROM grdb_migrations WHERE identifier = ?",
+            arguments: ["migrateDevelopSettingsSchemaV2"]
+        )
+    }
+
+    _ = try GRDBCatalogStore(databaseURL: tempURL)
+
+    let migratedJSON = try dbQueue.read { db in
+        try String.fetchOne(db, sql: "SELECT develop_settings_json FROM assets WHERE id = ?", arguments: [asset.id.uuidString])
+    }
+    let fetched = try #require(try GRDBCatalogStore(databaseURL: tempURL).fetchAsset(id: asset.id))
+
+    #expect((migratedJSON ?? "").contains("\"schemaVersion\":2"))
+    #expect(fetched.developSettings.luminanceNoiseReductionAmount == 0.1)
+    #expect(fetched.developSettings.chrominanceNoiseReductionAmount == 0.05)
+}
+
+@Test func exportServiceEmbedsMetadataIntoExports() throws {
+    let renderer = MockRenderer()
+    let service = ExportService(renderer: renderer)
+    let destinationDirectory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
+
+    let asset = Asset(
+        sourcePath: "/tmp/exported.jpg",
+        fileIdentity: "exported-asset",
+        fileSize: 1,
+        modifiedAt: .now,
+        captureDate: Date(timeIntervalSince1970: 1_700_000_000),
+        cameraMake: "Fuji",
+        cameraModel: "X-T5",
+        lensModel: "33mm",
+        pixelWidth: 10,
+        pixelHeight: 10,
+        format: .jpeg,
+        gpsCoordinate: GPSCoordinate(latitude: 40.7128, longitude: -74.0060, altitude: 14),
+        rating: 4,
+        flag: .picked,
+        keywords: ["city", "night"]
+    )
+
+    let preset = ExportPreset(
+        name: "JPEG",
+        format: .jpeg,
+        colorSpace: .sRGB,
+        quality: 0.85,
+        maxPixelSize: nil,
+        outputSharpening: 0,
+        fileNameTemplate: "{name}"
+    )
+
+    let report = try service.export(assets: [asset], preset: preset, destinationDirectory: destinationDirectory)
+    let exportedURL = try #require(report.exportedURLs.first)
+    let source = try #require(CGImageSourceCreateWithURL(exportedURL as CFURL, nil))
+    let properties = try #require(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
+    let metadata = try #require(CGImageSourceCopyMetadataAtIndex(source, 0, nil))
+
+    let tiff = try #require(properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any])
+    let exif = try #require(properties[kCGImagePropertyExifDictionary] as? [CFString: Any])
+    let iptc = try #require(properties[kCGImagePropertyIPTCDictionary] as? [CFString: Any])
+    let gps = try #require(properties[kCGImagePropertyGPSDictionary] as? [CFString: Any])
+
+    #expect(tiff[kCGImagePropertyTIFFMake] as? String == "Fuji")
+    #expect(tiff[kCGImagePropertyTIFFModel] as? String == "X-T5")
+    #expect(exif[kCGImagePropertyExifDateTimeOriginal] as? String == "2023:11:14 22:13:20")
+    #expect(CGImageMetadataCopyStringValueWithPath(metadata, nil, "aux:Lens" as CFString) as String? == "33mm")
+    #expect((iptc[kCGImagePropertyIPTCKeywords] as? [String])?.contains("night") == true)
+    #expect(abs((gps[kCGImagePropertyGPSLatitude] as? Double ?? 0) - 40.7128) < 0.001)
+}
+
+@Test func autoEnhancePreservesNoiseReductionSettings() throws {
+    let renderer = CoreImageDevelopRenderer()
+    let imageURL = try writeTemporaryJPEG()
+    var settings = DevelopSettings.default
+    settings.luminanceNoiseReductionAmount = 0.42
+    settings.chrominanceNoiseReductionAmount = 0.27
+
+    let suggested = try renderer.suggestedSettings(for: imageURL, current: settings)
+
+    #expect(suggested.luminanceNoiseReductionAmount == 0.42)
+    #expect(suggested.chrominanceNoiseReductionAmount == 0.27)
+}
+
 private struct MockDecoder: RawDecoder {
     let results: [String: ImportedAsset]
 
@@ -237,6 +450,18 @@ private func makeSolidImage() -> CGImage? {
         .cropped(to: CGRect(x: 0, y: 0, width: 10, height: 10))
     let context = CIContext()
     return context.createCGImage(ciImage, from: ciImage.extent)
+}
+
+private func writeTemporaryJPEG() throws -> URL {
+    let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let url = directory.appending(path: "auto-enhance.jpg")
+    let destination = try #require(
+        CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil)
+    )
+    CGImageDestinationAddImage(destination, try #require(makeSolidImage()), nil)
+    #expect(CGImageDestinationFinalize(destination))
+    return url
 }
 
 private final class MockCatalogStore: CatalogStore, @unchecked Sendable {
