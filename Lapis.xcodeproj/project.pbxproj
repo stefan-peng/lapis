@@ -1,0 +1,902 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0771A09D654D8F6A64717615 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8B6C1230DFAB1ACAECEEE78 /* ContentView.swift */; };
+		09891C3E7CC0C0C741224AA5 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 735422DFA894C59AD16262A5 /* Models.swift */; };
+		13718FD0B2D91966A52E8BD6 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B34479A7068377052D02D2A5 /* Cocoa.framework */; };
+		192E62C63C9BE92A18B074CA /* CatalogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74B95A54670417DD644071BD /* CatalogStore.swift */; };
+		328C5BA832F68BF6C680AD3F /* LapisCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 08236E9D70B5E09F44F57218 /* LapisCore.framework */; };
+		420E88611DCDF25BEACA89DF /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = E0DAF88008E14AF8B2F555B8 /* GRDB */; };
+		45CFD7B37F25471816D4829F /* ExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1290625B630A48B4E453C8A3 /* ExportService.swift */; };
+		466798CCB54AB86B4DAC2B04 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B34479A7068377052D02D2A5 /* Cocoa.framework */; };
+		496C545EDC375BCF14BB2862 /* AssetImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D63B3B23E1FFE0A5B39F2F37 /* AssetImporter.swift */; };
+		6DDACF141D3999C1B5CAB4F5 /* PreviewService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D80D60609FCBB0BCECBDAB08 /* PreviewService.swift */; };
+		71AB7A2A75C06FE7C909024F /* DevelopRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14267D901E66B2059029B546 /* DevelopRenderer.swift */; };
+		72049AC0E5D5A3C9B8F0C09E /* LapisCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 08236E9D70B5E09F44F57218 /* LapisCore.framework */; };
+		727D3AB5785B223930EF0FF4 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BBA42D3D8FDA316F75192AD /* AppState.swift */; };
+		7E2DC552E8AAB42279735249 /* AppleRawDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42999B4F2DA5092D1A2A7D00 /* AppleRawDecoder.swift */; };
+		83B9AD46123FF97703C02383 /* GPX.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70C849E7E42C12C974E49F33 /* GPX.swift */; };
+		8B3CD2F3F3E9E1BD8D0301BF /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E2D6979AC933CD5E90D5831 /* AppEnvironment.swift */; };
+		97B8523B5B4C67D35D428150 /* AppStateEditorSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 041956709B9CE4F3BF232868 /* AppStateEditorSessionTests.swift */; };
+		97E80A78928ACC531E6FCE6C /* LapisApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85D53919447AD381DFE903A /* LapisApp.swift */; };
+		990243AEAB2E7B1C7AB2B3AC /* LapisCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 08236E9D70B5E09F44F57218 /* LapisCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		B08B67C2CAA918355882D2C8 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B34479A7068377052D02D2A5 /* Cocoa.framework */; };
+		C0CE2C08A44C489B3F2961A9 /* RawDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D51E83C5A0C80917ACCCF0D /* RawDecoder.swift */; };
+		C29B9EC8C7B3E47BCE4733D2 /* MetadataWriteback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79E423C4C0AEA0EFF68A4D6F /* MetadataWriteback.swift */; };
+		CA92D272A820665A8A106B23 /* GRDBCatalogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EF11090B1BB4F7EAAC310E4 /* GRDBCatalogStore.swift */; };
+		CF4EF694655466E69B55ABDF /* LapisCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 08236E9D70B5E09F44F57218 /* LapisCore.framework */; };
+		DCFBD8395746BADA181CB32F /* ImporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA81313FA5B3BF1092AD0938 /* ImporterTests.swift */; };
+		E450D9E5F4003104A4CCF691 /* MetalPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A33F8DB3C80777C33F609D97 /* MetalPreviewView.swift */; };
+		EE56F82881FE0687F29FAA53 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B34479A7068377052D02D2A5 /* Cocoa.framework */; };
+		F1E181D339CB3974C3CE91A9 /* EditorSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1874FA19F41F865121FBE96F /* EditorSession.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		17782491F65285DC6842E86D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BF58CCCD1D96435C7FE70CBA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = DA453636A7423F9F628B327F;
+			remoteInfo = LapisCore;
+		};
+		479AA6B7AB65C9881757ADED /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BF58CCCD1D96435C7FE70CBA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = DA453636A7423F9F628B327F;
+			remoteInfo = LapisCore;
+		};
+		73E8FB524E83C88F1F2AF7CD /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BF58CCCD1D96435C7FE70CBA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 24EE3402054F419CC9DA044C;
+			remoteInfo = LapisApp;
+		};
+		E95824F348AEB2A2AB660134 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BF58CCCD1D96435C7FE70CBA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = DA453636A7423F9F628B327F;
+			remoteInfo = LapisCore;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		D295B9ED7D1C115A072B7BB4 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				990243AEAB2E7B1C7AB2B3AC /* LapisCore.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		041956709B9CE4F3BF232868 /* AppStateEditorSessionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppStateEditorSessionTests.swift; sourceTree = "<group>"; };
+		08236E9D70B5E09F44F57218 /* LapisCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = LapisCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		1290625B630A48B4E453C8A3 /* ExportService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ExportService.swift; sourceTree = "<group>"; };
+		14267D901E66B2059029B546 /* DevelopRenderer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DevelopRenderer.swift; sourceTree = "<group>"; };
+		1874FA19F41F865121FBE96F /* EditorSession.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EditorSession.swift; sourceTree = "<group>"; };
+		3305C8C183EB6A66B9B1D9D0 /* LapisCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LapisCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		42999B4F2DA5092D1A2A7D00 /* AppleRawDecoder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppleRawDecoder.swift; sourceTree = "<group>"; };
+		4D3AA7C8D0CB3AC7F7FDBC8F /* LapisAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LapisAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		70C849E7E42C12C974E49F33 /* GPX.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GPX.swift; sourceTree = "<group>"; };
+		735422DFA894C59AD16262A5 /* Models.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		74B95A54670417DD644071BD /* CatalogStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatalogStore.swift; sourceTree = "<group>"; };
+		79E423C4C0AEA0EFF68A4D6F /* MetadataWriteback.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MetadataWriteback.swift; sourceTree = "<group>"; };
+		7BBA42D3D8FDA316F75192AD /* AppState.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		8D51E83C5A0C80917ACCCF0D /* RawDecoder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RawDecoder.swift; sourceTree = "<group>"; };
+		8E2D6979AC933CD5E90D5831 /* AppEnvironment.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
+		8EF11090B1BB4F7EAAC310E4 /* GRDBCatalogStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GRDBCatalogStore.swift; sourceTree = "<group>"; };
+		98D90F32B5AE9469BA71B8E1 /* Lapis.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Lapis.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A33F8DB3C80777C33F609D97 /* MetalPreviewView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MetalPreviewView.swift; sourceTree = "<group>"; };
+		B34479A7068377052D02D2A5 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
+		BA81313FA5B3BF1092AD0938 /* ImporterTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ImporterTests.swift; sourceTree = "<group>"; };
+		C85D53919447AD381DFE903A /* LapisApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LapisApp.swift; sourceTree = "<group>"; };
+		C8B6C1230DFAB1ACAECEEE78 /* ContentView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		D63B3B23E1FFE0A5B39F2F37 /* AssetImporter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AssetImporter.swift; sourceTree = "<group>"; };
+		D80D60609FCBB0BCECBDAB08 /* PreviewService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PreviewService.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		3269592D536C09D809FAD242 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				13718FD0B2D91966A52E8BD6 /* Cocoa.framework in Frameworks */,
+				72049AC0E5D5A3C9B8F0C09E /* LapisCore.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AE002B5B99016C0F36EEDD66 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				466798CCB54AB86B4DAC2B04 /* Cocoa.framework in Frameworks */,
+				420E88611DCDF25BEACA89DF /* GRDB in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F8DFCF384E5D2DD29FB81033 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B08B67C2CAA918355882D2C8 /* Cocoa.framework in Frameworks */,
+				CF4EF694655466E69B55ABDF /* LapisCore.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FBA7F4BB8B16E3A1E5F35DDA /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EE56F82881FE0687F29FAA53 /* Cocoa.framework in Frameworks */,
+				328C5BA832F68BF6C680AD3F /* LapisCore.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		013141043626221DA91E2FF6 /* LapisAppTests */ = {
+			isa = PBXGroup;
+			children = (
+				041956709B9CE4F3BF232868 /* AppStateEditorSessionTests.swift */,
+			);
+			path = LapisAppTests;
+			sourceTree = "<group>";
+		};
+		1F8971DFA07A777F5BAB46FD /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				3BD543A0397969507BE779B0 /* LapisApp */,
+				F935144B3B50EA6F9062980A /* LapisCore */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		3135115DB424A79D09F43CC9 /* LapisCoreTests */ = {
+			isa = PBXGroup;
+			children = (
+				BA81313FA5B3BF1092AD0938 /* ImporterTests.swift */,
+			);
+			path = LapisCoreTests;
+			sourceTree = "<group>";
+		};
+		3BD543A0397969507BE779B0 /* LapisApp */ = {
+			isa = PBXGroup;
+			children = (
+				8E2D6979AC933CD5E90D5831 /* AppEnvironment.swift */,
+				7BBA42D3D8FDA316F75192AD /* AppState.swift */,
+				C8B6C1230DFAB1ACAECEEE78 /* ContentView.swift */,
+				1874FA19F41F865121FBE96F /* EditorSession.swift */,
+				C85D53919447AD381DFE903A /* LapisApp.swift */,
+				A33F8DB3C80777C33F609D97 /* MetalPreviewView.swift */,
+			);
+			path = LapisApp;
+			sourceTree = "<group>";
+		};
+		72C6DD95C73B10A99538D894 /* OS X */ = {
+			isa = PBXGroup;
+			children = (
+				B34479A7068377052D02D2A5 /* Cocoa.framework */,
+			);
+			name = "OS X";
+			sourceTree = "<group>";
+		};
+		C077E5711AD9D2210A9DAA0B /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				013141043626221DA91E2FF6 /* LapisAppTests */,
+				3135115DB424A79D09F43CC9 /* LapisCoreTests */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		C122F18A492FCA4F640BF57B /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				98D90F32B5AE9469BA71B8E1 /* Lapis.app */,
+				4D3AA7C8D0CB3AC7F7FDBC8F /* LapisAppTests.xctest */,
+				08236E9D70B5E09F44F57218 /* LapisCore.framework */,
+				3305C8C183EB6A66B9B1D9D0 /* LapisCoreTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		E7796B3B411556718AA7C3A9 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				72C6DD95C73B10A99538D894 /* OS X */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		E7B0123BEF6617DAA7ECF69F = {
+			isa = PBXGroup;
+			children = (
+				E7796B3B411556718AA7C3A9 /* Frameworks */,
+				C122F18A492FCA4F640BF57B /* Products */,
+				1F8971DFA07A777F5BAB46FD /* Sources */,
+				C077E5711AD9D2210A9DAA0B /* Tests */,
+			);
+			sourceTree = "<group>";
+		};
+		F935144B3B50EA6F9062980A /* LapisCore */ = {
+			isa = PBXGroup;
+			children = (
+				42999B4F2DA5092D1A2A7D00 /* AppleRawDecoder.swift */,
+				D63B3B23E1FFE0A5B39F2F37 /* AssetImporter.swift */,
+				74B95A54670417DD644071BD /* CatalogStore.swift */,
+				14267D901E66B2059029B546 /* DevelopRenderer.swift */,
+				1290625B630A48B4E453C8A3 /* ExportService.swift */,
+				70C849E7E42C12C974E49F33 /* GPX.swift */,
+				8EF11090B1BB4F7EAAC310E4 /* GRDBCatalogStore.swift */,
+				79E423C4C0AEA0EFF68A4D6F /* MetadataWriteback.swift */,
+				735422DFA894C59AD16262A5 /* Models.swift */,
+				D80D60609FCBB0BCECBDAB08 /* PreviewService.swift */,
+				8D51E83C5A0C80917ACCCF0D /* RawDecoder.swift */,
+			);
+			path = LapisCore;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXHeadersBuildPhase section */
+		590B7166D6FDCA89514A5772 /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXHeadersBuildPhase section */
+
+/* Begin PBXNativeTarget section */
+		24EE3402054F419CC9DA044C /* LapisApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8F1EFBF5AEAF6DA7F9F188D1 /* Build configuration list for PBXNativeTarget "LapisApp" */;
+			buildPhases = (
+				BD4D0A9FAB60D2FF06DCEE64 /* Sources */,
+				FBA7F4BB8B16E3A1E5F35DDA /* Frameworks */,
+				41388492B2001B3287659C54 /* Resources */,
+				D295B9ED7D1C115A072B7BB4 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				90726F1DB0857F4962A1A836 /* PBXTargetDependency */,
+			);
+			name = LapisApp;
+			productName = Lapis;
+			productReference = 98D90F32B5AE9469BA71B8E1 /* Lapis.app */;
+			productType = "com.apple.product-type.application";
+		};
+		4BDA5E3383AF7163B43DB919 /* LapisCoreTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 432BB9D7C57D72B864251FE9 /* Build configuration list for PBXNativeTarget "LapisCoreTests" */;
+			buildPhases = (
+				97E3000933D0A2DF777BE883 /* Sources */,
+				3269592D536C09D809FAD242 /* Frameworks */,
+				0C3A47B60382E76BDD5ED8D1 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A639EB1B1CC14DF092D8214F /* PBXTargetDependency */,
+			);
+			name = LapisCoreTests;
+			productName = LapisCoreTests;
+			productReference = 3305C8C183EB6A66B9B1D9D0 /* LapisCoreTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		B6D0A5737EBCB72D9755D2FD /* LapisAppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2F747109FF193DD44D491B2C /* Build configuration list for PBXNativeTarget "LapisAppTests" */;
+			buildPhases = (
+				C1F8082305FD6F1F63B2435D /* Sources */,
+				F8DFCF384E5D2DD29FB81033 /* Frameworks */,
+				883748015B6DCC4AADAABA42 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				57C9E04F0A985DDB6C03B7CE /* PBXTargetDependency */,
+				CA0BC1EE4341A51D34D08CCA /* PBXTargetDependency */,
+			);
+			name = LapisAppTests;
+			productName = LapisAppTests;
+			productReference = 4D3AA7C8D0CB3AC7F7FDBC8F /* LapisAppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		DA453636A7423F9F628B327F /* LapisCore */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D81FC991459ED4302924906A /* Build configuration list for PBXNativeTarget "LapisCore" */;
+			buildPhases = (
+				590B7166D6FDCA89514A5772 /* Headers */,
+				2D5138BA1C39A3CFF92E71C2 /* Sources */,
+				AE002B5B99016C0F36EEDD66 /* Frameworks */,
+				CEA5199A3A5B8ABA3D8CB2A0 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = LapisCore;
+			packageProductDependencies = (
+				E0DAF88008E14AF8B2F555B8 /* GRDB */,
+			);
+			productName = LapisCore;
+			productReference = 08236E9D70B5E09F44F57218 /* LapisCore.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		BF58CCCD1D96435C7FE70CBA /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastSwiftUpdateCheck = 2604;
+				LastUpgradeCheck = 2640;
+			};
+			buildConfigurationList = 8E30A0CA2169B210AB4C01FD /* Build configuration list for PBXProject "Lapis" */;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = E7B0123BEF6617DAA7ECF69F;
+			packageReferences = (
+				5AB623A1871B18AB52C60518 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
+			);
+			productRefGroup = C122F18A492FCA4F640BF57B /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				24EE3402054F419CC9DA044C /* LapisApp */,
+				B6D0A5737EBCB72D9755D2FD /* LapisAppTests */,
+				DA453636A7423F9F628B327F /* LapisCore */,
+				4BDA5E3383AF7163B43DB919 /* LapisCoreTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		0C3A47B60382E76BDD5ED8D1 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		41388492B2001B3287659C54 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		883748015B6DCC4AADAABA42 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CEA5199A3A5B8ABA3D8CB2A0 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		2D5138BA1C39A3CFF92E71C2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7E2DC552E8AAB42279735249 /* AppleRawDecoder.swift in Sources */,
+				496C545EDC375BCF14BB2862 /* AssetImporter.swift in Sources */,
+				192E62C63C9BE92A18B074CA /* CatalogStore.swift in Sources */,
+				71AB7A2A75C06FE7C909024F /* DevelopRenderer.swift in Sources */,
+				45CFD7B37F25471816D4829F /* ExportService.swift in Sources */,
+				83B9AD46123FF97703C02383 /* GPX.swift in Sources */,
+				CA92D272A820665A8A106B23 /* GRDBCatalogStore.swift in Sources */,
+				C29B9EC8C7B3E47BCE4733D2 /* MetadataWriteback.swift in Sources */,
+				09891C3E7CC0C0C741224AA5 /* Models.swift in Sources */,
+				6DDACF141D3999C1B5CAB4F5 /* PreviewService.swift in Sources */,
+				C0CE2C08A44C489B3F2961A9 /* RawDecoder.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		97E3000933D0A2DF777BE883 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DCFBD8395746BADA181CB32F /* ImporterTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BD4D0A9FAB60D2FF06DCEE64 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8B3CD2F3F3E9E1BD8D0301BF /* AppEnvironment.swift in Sources */,
+				727D3AB5785B223930EF0FF4 /* AppState.swift in Sources */,
+				0771A09D654D8F6A64717615 /* ContentView.swift in Sources */,
+				F1E181D339CB3974C3CE91A9 /* EditorSession.swift in Sources */,
+				97E80A78928ACC531E6FCE6C /* LapisApp.swift in Sources */,
+				E450D9E5F4003104A4CCF691 /* MetalPreviewView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C1F8082305FD6F1F63B2435D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				97B8523B5B4C67D35D428150 /* AppStateEditorSessionTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		57C9E04F0A985DDB6C03B7CE /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = LapisApp;
+			target = 24EE3402054F419CC9DA044C /* LapisApp */;
+			targetProxy = 73E8FB524E83C88F1F2AF7CD /* PBXContainerItemProxy */;
+		};
+		90726F1DB0857F4962A1A836 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = LapisCore;
+			target = DA453636A7423F9F628B327F /* LapisCore */;
+			targetProxy = 479AA6B7AB65C9881757ADED /* PBXContainerItemProxy */;
+		};
+		A639EB1B1CC14DF092D8214F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = LapisCore;
+			target = DA453636A7423F9F628B327F /* LapisCore */;
+			targetProxy = E95824F348AEB2A2AB660134 /* PBXContainerItemProxy */;
+		};
+		CA0BC1EE4341A51D34D08CCA /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = LapisCore;
+			target = DA453636A7423F9F628B327F /* LapisCore */;
+			targetProxy = 17782491F65285DC6842E86D /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		174012B8A02BEEAA2BBFF7DC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@loader_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu11 gnu++14";
+				PRODUCT_BUNDLE_IDENTIFIER = com.speng.lapis.LapisCore;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = NO;
+				SWIFT_VERSION = 6.0;
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Release;
+		};
+		44E8C88250A95DC97AE7E406 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				DEAD_CODE_STRIPPING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.speng.lapis.LapisAppTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Lapis.app/Contents/MacOS/Lapis";
+				TEST_TARGET_NAME = LapisApp;
+			};
+			name = Debug;
+		};
+		4F6B48850BB662BD781AFB74 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				DEAD_CODE_STRIPPING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@loader_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.speng.lapis.LapisCoreTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		6C189A733BDC2CA5559DDCEB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@loader_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu11 gnu++14";
+				PRODUCT_BUNDLE_IDENTIFIER = com.speng.lapis.LapisCore;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = NO;
+				SWIFT_VERSION = 6.0;
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Debug;
+		};
+		6C33A0FB4235C9F43F60622C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		7EFBF88F6ACD8B48BB735C28 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = SX8WPHKXYL;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Lapis;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.speng.lapis;
+				PRODUCT_MODULE_NAME = LapisApp;
+				PRODUCT_NAME = Lapis;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = macosx;
+				SKIP_INSTALL = NO;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		B5D94585660E1CB8528AFFBC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				DEAD_CODE_STRIPPING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.speng.lapis.LapisAppTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Lapis.app/Contents/MacOS/Lapis";
+				TEST_TARGET_NAME = LapisApp;
+			};
+			name = Release;
+		};
+		CF8EB126853422682DA644B5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				DEAD_CODE_STRIPPING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@loader_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.speng.lapis.LapisCoreTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		EC43FA863C59689ADE86C144 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		FE8A02ED999A764F31C3C10D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = SX8WPHKXYL;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Lapis;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.speng.lapis;
+				PRODUCT_MODULE_NAME = LapisApp;
+				PRODUCT_NAME = Lapis;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = macosx;
+				SKIP_INSTALL = NO;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		2F747109FF193DD44D491B2C /* Build configuration list for PBXNativeTarget "LapisAppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				44E8C88250A95DC97AE7E406 /* Debug */,
+				B5D94585660E1CB8528AFFBC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		432BB9D7C57D72B864251FE9 /* Build configuration list for PBXNativeTarget "LapisCoreTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4F6B48850BB662BD781AFB74 /* Debug */,
+				CF8EB126853422682DA644B5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		8E30A0CA2169B210AB4C01FD /* Build configuration list for PBXProject "Lapis" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6C33A0FB4235C9F43F60622C /* Debug */,
+				EC43FA863C59689ADE86C144 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		8F1EFBF5AEAF6DA7F9F188D1 /* Build configuration list for PBXNativeTarget "LapisApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FE8A02ED999A764F31C3C10D /* Debug */,
+				7EFBF88F6ACD8B48BB735C28 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D81FC991459ED4302924906A /* Build configuration list for PBXNativeTarget "LapisCore" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6C189A733BDC2CA5559DDCEB /* Debug */,
+				174012B8A02BEEAA2BBFF7DC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		5AB623A1871B18AB52C60518 /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/groue/GRDB.swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.8.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		E0DAF88008E14AF8B2F555B8 /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5AB623A1871B18AB52C60518 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
+			productName = GRDB;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = BF58CCCD1D96435C7FE70CBA /* Project object */;
+}
