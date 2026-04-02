@@ -5,7 +5,11 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
-public final class ExportService: @unchecked Sendable {
+public protocol AssetExporting: Sendable {
+    func export(assets: [Asset], preset: ExportPreset, destinationDirectory: URL) throws -> ExportReport
+}
+
+public final class ExportService: AssetExporting, @unchecked Sendable {
     private let renderer: DevelopRenderer
     private let metadataWritebackService: MetadataWritebackService
     private let context = CIContext(options: [.cacheIntermediates: true])

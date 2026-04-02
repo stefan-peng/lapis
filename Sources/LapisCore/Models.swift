@@ -565,3 +565,57 @@ public struct ImportedAsset: Sendable {
         self.previewPath = previewPath
     }
 }
+
+public enum LibrarySelectionIntent: Sendable {
+    case replace(UUID)
+    case toggle(UUID)
+    case extendRange(UUID)
+    case clear
+}
+
+public struct LibrarySelectionState: Equatable, Sendable {
+    public var selectedAssetIDs: Set<UUID>
+    public var anchorAssetID: UUID?
+
+    public init(selectedAssetIDs: Set<UUID> = [], anchorAssetID: UUID? = nil) {
+        self.selectedAssetIDs = selectedAssetIDs
+        self.anchorAssetID = anchorAssetID
+    }
+
+    public func applying(_ intent: LibrarySelectionIntent, orderedAssetIDs: [UUID]) -> LibrarySelectionState {
+        switch intent {
+        case let .replace(assetID):
+            return LibrarySelectionState(selectedAssetIDs: [assetID], anchorAssetID: assetID)
+        case let .toggle(assetID):
+            var nextSelection = selectedAssetIDs
+            if nextSelection.contains(assetID) {
+                nextSelection.remove(assetID)
+            } else {
+                nextSelection.insert(assetID)
+            }
+            return LibrarySelectionState(
+                selectedAssetIDs: nextSelection,
+                anchorAssetID: Self.normalizedAnchor(assetID, within: nextSelection)
+            )
+        case let .extendRange(assetID):
+            guard
+                let anchorAssetID,
+                let anchorIndex = orderedAssetIDs.firstIndex(of: anchorAssetID),
+                let targetIndex = orderedAssetIDs.firstIndex(of: assetID)
+            else {
+                return LibrarySelectionState(selectedAssetIDs: [assetID], anchorAssetID: assetID)
+            }
+
+            let lowerBound = min(anchorIndex, targetIndex)
+            let upperBound = max(anchorIndex, targetIndex)
+            let rangeIDs = Set(orderedAssetIDs[lowerBound...upperBound])
+            return LibrarySelectionState(selectedAssetIDs: rangeIDs, anchorAssetID: anchorAssetID)
+        case .clear:
+            return LibrarySelectionState()
+        }
+    }
+
+    private static func normalizedAnchor(_ preferredAnchor: UUID?, within selection: Set<UUID>) -> UUID? {
+        preferredAnchor.flatMap { selection.contains($0) ? $0 : selection.first }
+    }
+}

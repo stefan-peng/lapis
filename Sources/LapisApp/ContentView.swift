@@ -689,7 +689,7 @@ private struct EditorWorkspaceView: View {
                     .fill(Color.black.opacity(0.92))
 
                 MetalPreviewView(
-                    context: session.renderer.interactiveContext,
+                    context: session.interactiveRenderContext,
                     image: session.displayImage,
                     zoomScale: session.zoomScale,
                     panOffset: session.panOffset,

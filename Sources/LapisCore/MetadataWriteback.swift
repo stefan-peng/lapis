@@ -1,7 +1,11 @@
 import Foundation
 import ImageIO
 
-public final class MetadataWritebackService: @unchecked Sendable {
+public protocol MetadataWriting: Sendable {
+    func writeXMPSidecar(for asset: Asset) throws -> URL
+}
+
+public final class MetadataWritebackService: MetadataWriting, @unchecked Sendable {
     public init() {}
 
     public func writeXMPSidecar(for asset: Asset) throws -> URL {

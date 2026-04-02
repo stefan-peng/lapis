@@ -2,14 +2,13 @@ import Foundation
 import LapisCore
 
 struct AppEnvironment {
-    let catalogStore: GRDBCatalogStore
-    let importer: AssetImporter
-    let geotagMatcher: TimestampGeotagMatcher
-    let gpxParser: GPXParser
-    let renderer: CoreImageDevelopRenderer
-    let previewService: PreviewService
-    let exportService: ExportService
-    let writebackService: MetadataWritebackService
+    let catalogStore: any CatalogStore
+    let importer: any FolderImporting
+    let gpxService: any GPXApplying
+    let developProcessor: any DevelopProcessing
+    let assetEditor: any AssetEditing
+    let exportService: any AssetExporting
+    let metadataWriter: any MetadataWriting
 
     static func live() throws -> AppEnvironment {
         let baseURL = try applicationSupportDirectory()
@@ -19,16 +18,20 @@ struct AppEnvironment {
         let store = try GRDBCatalogStore(databaseURL: catalogURL)
         let previewService = try PreviewService(directoryURL: previewURL)
         let renderer = CoreImageDevelopRenderer()
+        let rawImporter = AssetImporter(decoder: AppleRawDecoder(), previewService: previewService)
 
         return AppEnvironment(
             catalogStore: store,
-            importer: AssetImporter(decoder: AppleRawDecoder(), previewService: previewService),
-            geotagMatcher: TimestampGeotagMatcher(),
-            gpxParser: GPXParser(),
-            renderer: renderer,
-            previewService: previewService,
+            importer: FolderImportService(importer: rawImporter, catalogStore: store),
+            gpxService: GPXApplicationService(
+                catalogStore: store,
+                parser: GPXParser(),
+                matcher: TimestampGeotagMatcher()
+            ),
+            developProcessor: renderer,
+            assetEditor: AssetEditingService(catalogStore: store, renderer: renderer, previewCache: previewService),
             exportService: ExportService(renderer: renderer),
-            writebackService: MetadataWritebackService()
+            metadataWriter: MetadataWritebackService()
         )
     }
 

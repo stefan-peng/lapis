@@ -54,6 +54,23 @@ import UniformTypeIdentifiers
     #expect(track.points.first?.coordinate == GPSCoordinate(latitude: 1, longitude: 2, altitude: 10))
 }
 
+@Test func librarySelectionStateAppliesReplaceToggleAndRangeSelection() {
+    let ids = [UUID(), UUID(), UUID(), UUID()]
+
+    let replaced = LibrarySelectionState()
+        .applying(.replace(ids[1]), orderedAssetIDs: ids)
+    #expect(replaced.selectedAssetIDs == [ids[1]])
+    #expect(replaced.anchorAssetID == ids[1])
+
+    let toggled = replaced.applying(.toggle(ids[2]), orderedAssetIDs: ids)
+    #expect(toggled.selectedAssetIDs == Set([ids[1], ids[2]]))
+    #expect(toggled.anchorAssetID == ids[2])
+
+    let ranged = replaced.applying(.extendRange(ids[3]), orderedAssetIDs: ids)
+    #expect(ranged.selectedAssetIDs == Set([ids[1], ids[2], ids[3]]))
+    #expect(ranged.anchorAssetID == ids[1])
+}
+
 @Test func catalogStoreAvoidsDuplicatePaths() throws {
     let tempURL = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString).appendingPathExtension("sqlite")
     let store = try GRDBCatalogStore(databaseURL: tempURL)

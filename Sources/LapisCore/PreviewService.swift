@@ -3,7 +3,11 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
-public final class PreviewService: @unchecked Sendable {
+public protocol PreviewCaching: Sendable {
+    func cachePreview(named identifier: String, image: CGImage) throws -> URL
+}
+
+public final class PreviewService: PreviewCaching, @unchecked Sendable {
     public let directoryURL: URL
 
     public init(directoryURL: URL) throws {

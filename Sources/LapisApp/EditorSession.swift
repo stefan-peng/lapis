@@ -17,10 +17,10 @@ final class EditorSession {
     weak var state: AppState?
     let assetID: UUID
     let sourcePath: String
-    let renderer: CoreImageDevelopRenderer
+    let developProcessor: any DevelopProcessing
+    let interactiveRenderContext: CIContext
     let sourcePixelSize: CGSize
-    private let catalogStore: GRDBCatalogStore
-    private let previewService: PreviewService
+    private let assetEditor: any AssetEditing
 
     var committedSettings: DevelopSettings
     var currentSettings: DevelopSettings
@@ -43,10 +43,10 @@ final class EditorSession {
         self.state = state
         assetID = asset.id
         sourcePath = asset.sourcePath
-        renderer = state.environment.renderer
+        developProcessor = state.environment.developProcessor
+        interactiveRenderContext = state.environment.developProcessor.interactiveContext
         sourcePixelSize = CGSize(width: max(asset.pixelWidth, 1), height: max(asset.pixelHeight, 1))
-        catalogStore = state.environment.catalogStore
-        previewService = state.environment.previewService
+        assetEditor = state.environment.assetEditor
         committedSettings = asset.developSettings
         currentSettings = asset.developSettings
         queuePreviewRender(delayMilliseconds: 0)
@@ -87,7 +87,7 @@ final class EditorSession {
         do {
             let preservedLumaNoiseReductionAmount = currentSettings.luminanceNoiseReductionAmount
             let preservedChromaNoiseReductionAmount = currentSettings.chrominanceNoiseReductionAmount
-            currentSettings = try renderer.suggestedSettings(
+            currentSettings = try developProcessor.suggestedSettings(
                 for: URL(fileURLWithPath: sourcePath),
                 current: currentSettings
             )
@@ -103,7 +103,7 @@ final class EditorSession {
 
     func applyAuto(_ control: AutoAdjustmentControl) {
         do {
-            let value = try renderer.suggestedValue(
+            let value = try developProcessor.suggestedValue(
                 for: control,
                 fileURL: URL(fileURLWithPath: sourcePath),
                 current: currentSettings
@@ -132,7 +132,7 @@ final class EditorSession {
 
     func applyAutoOptics() {
         do {
-            let analysis = try renderer.analysis(for: URL(fileURLWithPath: sourcePath))
+            let analysis = try developProcessor.analysis(for: URL(fileURLWithPath: sourcePath))
             currentSettings.lensCorrectionAmount = analysis.lensCorrectionSuggested ? 1 : 0
             currentSettings.vignetteCorrectionAmount = max(currentSettings.vignetteCorrectionAmount, 0.25)
             queuePreviewRender()
@@ -297,14 +297,15 @@ final class EditorSession {
         let sourceURL = URL(fileURLWithPath: sourcePath)
         let settings = displayPreviewSettings()
         let maxPixelSize = requestedPreviewPixelSize(for: settings)
+        let developProcessor = self.developProcessor
 
-        renderTask = Task.detached(priority: .userInitiated) { [renderer, weak self, weak state] in
+        renderTask = Task.detached(priority: .userInitiated) { [developProcessor, weak self, weak state] in
             do {
                 if delayMilliseconds > 0 {
                     try await Task.sleep(for: .milliseconds(delayMilliseconds))
                 }
                 if Task.isCancelled { return }
-                let image = try renderer.previewImage(from: sourceURL, settings: settings, maxPixelSize: maxPixelSize)
+                let image = try developProcessor.previewImage(from: sourceURL, settings: settings, maxPixelSize: maxPixelSize)
                 await MainActor.run {
                     guard self?.latestRenderID == renderID else { return }
                     self?.displayImage = image
@@ -368,34 +369,24 @@ final class EditorSession {
         saveTask?.cancel()
         let settings = currentSettings
         let saveID = beginPersistence()
-        saveTask = Task.detached(priority: .utility) { [catalogStore, previewService, renderer, sourcePath, assetID, weak state, weak self] in
+        let request = makeEditRequest(settings: settings)
+        let assetEditor = self.assetEditor
+        saveTask = Task.detached(priority: .utility) { [assetEditor, weak state, weak self] in
             do {
                 try await Task.sleep(for: .milliseconds(300))
                 if Task.isCancelled { return }
                 guard await Self.isCurrentSave(saveID, session: self) else { return }
-                try catalogStore.saveDevelopSettings(assetID: assetID, settings: settings)
+                let result = try assetEditor.commit(request)
                 guard await Self.isCurrentSave(saveID, session: self), !Task.isCancelled else { return }
-                let rendered = try renderer.renderImage(
-                    from: URL(fileURLWithPath: sourcePath),
-                    settings: settings,
-                    maxPixelSize: 2048
-                )
-                guard await Self.isCurrentSave(saveID, session: self), !Task.isCancelled else { return }
-                let previewURL = try previewService.cachePreview(named: assetID.uuidString, image: rendered)
-                guard await Self.isCurrentSave(saveID, session: self), !Task.isCancelled else { return }
-                try catalogStore.updatePreview(
-                    assetID: assetID,
-                    previewPath: previewURL.path(percentEncoded: false),
-                    status: .ready
-                )
                 await MainActor.run {
                     guard self?.latestSaveID == saveID else { return }
                     state?.applyEditorCommit(
-                        assetID: assetID,
-                        settings: settings,
-                        previewPath: previewURL.path(percentEncoded: false)
+                        assetID: request.assetID,
+                        settings: result.settings,
+                        previewPath: result.previewPath,
+                        previewStatus: result.previewStatus
                     )
-                    self?.committedSettings = settings
+                    self?.committedSettings = result.settings
                 }
             } catch is CancellationError {
                 return
@@ -415,32 +406,22 @@ final class EditorSession {
 
     private func persist(settings: DevelopSettings, saveID: UUID) {
         isPersisting = true
-        Task.detached(priority: .utility) { [catalogStore, previewService, renderer, sourcePath, assetID, weak state, weak self] in
+        let request = makeEditRequest(settings: settings)
+        let assetEditor = self.assetEditor
+        Task.detached(priority: .utility) { [assetEditor, weak state, weak self] in
             do {
                 guard await Self.isCurrentSave(saveID, session: self) else { return }
-                try catalogStore.saveDevelopSettings(assetID: assetID, settings: settings)
+                let result = try assetEditor.commit(request)
                 guard await Self.isCurrentSave(saveID, session: self) else { return }
-                let rendered = try renderer.renderImage(
-                    from: URL(fileURLWithPath: sourcePath),
-                    settings: settings,
-                    maxPixelSize: 2048
-                )
-                guard await Self.isCurrentSave(saveID, session: self) else { return }
-                let previewURL = try previewService.cachePreview(named: assetID.uuidString, image: rendered)
-                guard await Self.isCurrentSave(saveID, session: self) else { return }
-                try catalogStore.updatePreview(
-                    assetID: assetID,
-                    previewPath: previewURL.path(percentEncoded: false),
-                    status: .ready
-                )
                 await MainActor.run {
                     guard self?.latestSaveID == saveID else { return }
                     state?.applyEditorCommit(
-                        assetID: assetID,
-                        settings: settings,
-                        previewPath: previewURL.path(percentEncoded: false)
+                        assetID: request.assetID,
+                        settings: result.settings,
+                        previewPath: result.previewPath,
+                        previewStatus: result.previewStatus
                     )
-                    self?.committedSettings = settings
+                    self?.committedSettings = result.settings
                     self?.isPersisting = false
                 }
             } catch {
@@ -467,6 +448,15 @@ final class EditorSession {
         await MainActor.run {
             session?.latestSaveID == saveID
         }
+    }
+
+    private func makeEditRequest(settings: DevelopSettings) -> AssetEditRequest {
+        AssetEditRequest(
+            assetID: assetID,
+            sourcePath: sourcePath,
+            settings: settings,
+            previewIdentifier: assetID.uuidString
+        )
     }
 
     private func clampedCropRect(_ rect: CropRect) -> CropRect {

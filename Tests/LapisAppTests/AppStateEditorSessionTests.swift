@@ -95,15 +95,15 @@ private func makeAppState() throws -> (AppState, [Asset]) {
     let store = try GRDBCatalogStore(databaseURL: databaseURL)
     let previewService = try PreviewService(directoryURL: previewsURL)
     let renderer = CoreImageDevelopRenderer()
+    let importer = AssetImporter(decoder: AppleRawDecoder(), previewService: previewService)
     let environment = AppEnvironment(
         catalogStore: store,
-        importer: AssetImporter(decoder: AppleRawDecoder(), previewService: previewService),
-        geotagMatcher: TimestampGeotagMatcher(),
-        gpxParser: GPXParser(),
-        renderer: renderer,
-        previewService: previewService,
+        importer: FolderImportService(importer: importer, catalogStore: store),
+        gpxService: GPXApplicationService(catalogStore: store, parser: GPXParser(), matcher: TimestampGeotagMatcher()),
+        developProcessor: renderer,
+        assetEditor: AssetEditingService(catalogStore: store, renderer: renderer, previewCache: previewService),
         exportService: ExportService(renderer: renderer),
-        writebackService: MetadataWritebackService()
+        metadataWriter: MetadataWritebackService()
     )
 
     for index in 1...3 {

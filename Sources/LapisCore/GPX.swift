@@ -39,6 +39,10 @@ public protocol GeotagMatcher: Sendable {
     ) -> [GeotagMatch]
 }
 
+public protocol GPXParsing: Sendable {
+    func parse(data: Data) throws -> GPXTrack
+}
+
 public struct TimestampGeotagMatcher: GeotagMatcher {
     public init() {}
 
@@ -64,7 +68,7 @@ public struct TimestampGeotagMatcher: GeotagMatcher {
     }
 }
 
-public final class GPXParser: NSObject, XMLParserDelegate, @unchecked Sendable {
+public final class GPXParser: NSObject, GPXParsing, XMLParserDelegate, @unchecked Sendable {
     private var parsedPoints: [GPXPoint] = []
     private var currentLatitude: Double?
     private var currentLongitude: Double?

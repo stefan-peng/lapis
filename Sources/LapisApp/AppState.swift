@@ -114,14 +114,7 @@ final class AppState {
 
         guard panel.runModal() == .OK else { return }
         do {
-            var totals = ImportJob()
-            for folder in panel.urls {
-                let job = try environment.importer.importFolder(folder, into: environment.catalogStore)
-                totals.importedCount += job.importedCount
-                totals.duplicateCount += job.duplicateCount
-                totals.skippedCount += job.skippedCount
-                totals.failures.append(contentsOf: job.failures)
-            }
+            let totals = try environment.importer.importFolders(panel.urls)
             importSummary = "Imported \(totals.importedCount), duplicates \(totals.duplicateCount), skipped \(totals.skippedCount)"
             statusMessage = importSummary
             try reload()
@@ -140,16 +133,14 @@ final class AppState {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             let data = try Data(contentsOf: url)
-            let track = try environment.gpxParser.parse(data: data)
             let targetAssets = try gpxCandidateAssets()
-            let matches = environment.geotagMatcher.match(
-                assets: targetAssets,
-                track: track,
+            let result = try environment.gpxService.applyGPX(
+                data: data,
+                to: targetAssets,
                 timezoneOffsetMinutes: gpxTimezoneOffsetMinutes,
                 cameraClockOffsetSeconds: gpxCameraClockOffsetSeconds
             )
-            let applied = try environment.catalogStore.geotagAssets(matches)
-            statusMessage = "Applied GPX tags to \(applied) of \(targetAssets.count) candidate photos"
+            statusMessage = "Applied GPX tags to \(result.appliedCount) of \(result.candidateCount) candidate photos"
             try reload()
         } catch {
             statusMessage = error.localizedDescription
@@ -176,8 +167,20 @@ final class AppState {
         guard var asset = selectedAsset else { return }
         transform(&asset.developSettings)
         do {
-            try environment.catalogStore.saveDevelopSettings(assetID: asset.id, settings: asset.developSettings)
-            try regeneratePreview(for: asset, settings: asset.developSettings)
+            let result = try environment.assetEditor.commit(
+                AssetEditRequest(
+                    assetID: asset.id,
+                    sourcePath: asset.sourcePath,
+                    settings: asset.developSettings,
+                    previewIdentifier: asset.id.uuidString
+                )
+            )
+            applyEditorCommit(
+                assetID: asset.id,
+                settings: result.settings,
+                previewPath: result.previewPath,
+                previewStatus: result.previewStatus
+            )
             showOriginalInEditor = false
             try reload()
         } catch {
@@ -188,8 +191,20 @@ final class AppState {
     func resetSelectedAssetDevelopSettings() {
         guard let asset = selectedAsset else { return }
         do {
-            try environment.catalogStore.saveDevelopSettings(assetID: asset.id, settings: .default)
-            try regeneratePreview(for: asset, settings: .default)
+            let result = try environment.assetEditor.commit(
+                AssetEditRequest(
+                    assetID: asset.id,
+                    sourcePath: asset.sourcePath,
+                    settings: .default,
+                    previewIdentifier: asset.id.uuidString
+                )
+            )
+            applyEditorCommit(
+                assetID: asset.id,
+                settings: result.settings,
+                previewPath: result.previewPath,
+                previewStatus: result.previewStatus
+            )
             showOriginalInEditor = false
             try reload()
         } catch {
@@ -255,7 +270,7 @@ final class AppState {
     func writeMetadataSidecar() {
         guard let asset = selectedAsset else { return }
         do {
-            let url = try environment.writebackService.writeXMPSidecar(for: asset)
+            let url = try environment.metadataWriter.writeXMPSidecar(for: asset)
             statusMessage = "Wrote sidecar to \(url.lastPathComponent)"
         } catch {
             statusMessage = error.localizedDescription
@@ -272,49 +287,31 @@ final class AppState {
     }
 
     func handleLibrarySelection(assetID: UUID, modifiers: NSEvent.ModifierFlags) {
+        let intent: LibrarySelectionIntent
         if modifiers.contains(.shift) {
-            extendSelection(to: assetID)
-            return
+            intent = .extendRange(assetID)
+        } else if modifiers.contains(.command) {
+            intent = .toggle(assetID)
+        } else {
+            intent = .replace(assetID)
         }
-        if modifiers.contains(.command) {
-            toggleSelection(for: assetID)
-            return
-        }
-        selectSingleAsset(assetID)
+        applySelectionIntent(intent)
     }
 
     func selectSingleAsset(_ assetID: UUID) {
-        applySelection([assetID], anchor: assetID)
+        applySelectionIntent(.replace(assetID))
     }
 
     func toggleSelection(for assetID: UUID) {
-        var nextSelection = selectedAssetIDs
-        if nextSelection.contains(assetID) {
-            nextSelection.remove(assetID)
-        } else {
-            nextSelection.insert(assetID)
-        }
-        applySelection(nextSelection, anchor: assetID)
+        applySelectionIntent(.toggle(assetID))
     }
 
     func extendSelection(to assetID: UUID) {
-        guard
-            let anchorID = selectionAnchorAssetID,
-            let anchorIndex = assets.firstIndex(where: { $0.id == anchorID }),
-            let targetIndex = assets.firstIndex(where: { $0.id == assetID })
-        else {
-            selectSingleAsset(assetID)
-            return
-        }
-
-        let lowerBound = min(anchorIndex, targetIndex)
-        let upperBound = max(anchorIndex, targetIndex)
-        let rangeIDs = Set(assets[lowerBound...upperBound].map(\.id))
-        applySelection(rangeIDs, anchor: anchorID)
+        applySelectionIntent(.extendRange(assetID))
     }
 
     func clearSelection() {
-        applySelection([], anchor: nil)
+        applySelectionIntent(.clear)
     }
 
     func activateCompareMode() {
@@ -346,32 +343,11 @@ final class AppState {
         return try environment.catalogStore.fetchAssets(filter: scopeFilter)
     }
 
-    private func regeneratePreview(for asset: Asset, settings: DevelopSettings) throws {
-        do {
-            let rendered = try environment.renderer.renderImage(
-                from: URL(fileURLWithPath: asset.sourcePath),
-                settings: settings,
-                maxPixelSize: 2048
-            )
-            let previewURL = try environment.previewService.cachePreview(named: asset.id.uuidString, image: rendered)
-            try environment.catalogStore.updatePreview(
-                assetID: asset.id,
-                previewPath: previewURL.path(percentEncoded: false),
-                status: .ready
-            )
-        } catch {
-            try? environment.catalogStore.updatePreview(assetID: asset.id, previewPath: nil, status: .failed)
-            throw error
-        }
-    }
-
-    func applyEditorCommit(assetID: UUID, settings: DevelopSettings, previewPath: String?) {
+    func applyEditorCommit(assetID: UUID, settings: DevelopSettings, previewPath: String?, previewStatus: PreviewStatus) {
         guard let index = assets.firstIndex(where: { $0.id == assetID }) else { return }
         assets[index].developSettings = settings
-        if let previewPath {
-            assets[index].previewPath = previewPath
-            assets[index].previewStatus = .ready
-        }
+        assets[index].previewPath = previewPath
+        assets[index].previewStatus = previewStatus
     }
 
     private func applySelection(_ selection: Set<UUID>, anchor: UUID?) {
@@ -380,5 +356,11 @@ final class AppState {
         if libraryDetailMode == .compare, selectedAssetIDs.count != 2 {
             libraryDetailMode = .browse
         }
+    }
+
+    private func applySelectionIntent(_ intent: LibrarySelectionIntent) {
+        let current = LibrarySelectionState(selectedAssetIDs: selectedAssetIDs, anchorAssetID: selectionAnchorAssetID)
+        let next = current.applying(intent, orderedAssetIDs: assets.map(\.id))
+        applySelection(next.selectedAssetIDs, anchor: next.anchorAssetID)
     }
 }

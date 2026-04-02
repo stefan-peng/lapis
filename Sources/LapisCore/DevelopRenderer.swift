@@ -8,6 +8,14 @@ public protocol DevelopRenderer: Sendable {
     func renderImage(from fileURL: URL, settings: DevelopSettings, maxPixelSize: Int?) throws -> CGImage
 }
 
+public protocol DevelopProcessing: DevelopRenderer {
+    var interactiveContext: CIContext { get }
+    func previewImage(from fileURL: URL, settings: DevelopSettings, maxPixelSize: Int?) throws -> CIImage
+    func analysis(for fileURL: URL) throws -> ImageAnalysis
+    func suggestedSettings(for fileURL: URL, current settings: DevelopSettings) throws -> DevelopSettings
+    func suggestedValue(for control: AutoAdjustmentControl, fileURL: URL, current settings: DevelopSettings) throws -> Double
+}
+
 public struct ImageAnalysis: Sendable {
     public var averageLuminance: Double
     public var averageSaturation: Double
@@ -20,7 +28,7 @@ public struct ImageAnalysis: Sendable {
     }
 }
 
-public final class CoreImageDevelopRenderer: DevelopRenderer, @unchecked Sendable {
+public final class CoreImageDevelopRenderer: DevelopProcessing, @unchecked Sendable {
     private final class CachedImageBox: NSObject {
         let image: CIImage
 
