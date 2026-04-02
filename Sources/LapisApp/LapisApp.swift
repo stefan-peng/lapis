@@ -36,9 +36,10 @@ struct LapisAppMain: App {
                         }
                 }
             }
-            .frame(minWidth: 1240, minHeight: 780)
+            .frame(minWidth: 900, minHeight: 700)
         }
-        .windowResizability(.contentSize)
+        .windowResizability(.contentMinSize)
+        .windowToolbarStyle(.unified(showsTitle: true))
         .commands {
             SidebarCommands()
             InspectorCommands()

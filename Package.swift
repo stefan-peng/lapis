@@ -29,6 +29,10 @@ let package = Package(
             name: "LapisCoreTests",
             dependencies: ["LapisCore"]
         ),
+        .testTarget(
+            name: "LapisAppTests",
+            dependencies: ["LapisApp", "LapisCore"]
+        ),
     ],
     swiftLanguageModes: [.v6]
 )

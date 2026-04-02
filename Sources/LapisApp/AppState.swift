@@ -14,6 +14,13 @@ final class AppState {
         var id: String { rawValue }
     }
 
+    enum LibraryDetailMode: String, CaseIterable, Identifiable {
+        case browse
+        case compare
+
+        var id: String { rawValue }
+    }
+
     static let defaultExportPresets: [ExportPreset] = [
         ExportPreset(
             name: "High Quality JPEG",
@@ -54,6 +61,7 @@ final class AppState {
     var exportPresets: [ExportPreset] = AppState.defaultExportPresets
 
     var workspaceMode: WorkspaceMode = .library
+    var libraryDetailMode: LibraryDetailMode = .browse
     var showOriginalInEditor = false
     var filter = AssetFilter.default
     var importSummary = ""
@@ -61,6 +69,7 @@ final class AppState {
     var gpxTimezoneOffsetMinutes = 0
     var gpxCameraClockOffsetSeconds = 0
     var albumNameDraft = ""
+    var selectionAnchorAssetID: UUID?
 
     init(environment: AppEnvironment) throws {
         self.environment = environment
@@ -84,12 +93,16 @@ final class AppState {
         Array(selectedAssets.prefix(2))
     }
 
+    var canCompareSelection: Bool {
+        selectedAssetIDs.count == 2
+    }
+
     func reload() throws {
         var activeFilter = filter
         activeFilter.albumID = selectedAlbumID
         assets = try environment.catalogStore.fetchAssets(filter: activeFilter)
         albums = try environment.catalogStore.fetchAlbums()
-        selectedAssetIDs = selectedAssetIDs.intersection(Set(assets.map(\.id)))
+        applySelection(selectedAssetIDs.intersection(Set(assets.map(\.id))), anchor: selectionAnchorAssetID)
     }
 
     func importFolders() {
@@ -258,6 +271,71 @@ final class AppState {
         }
     }
 
+    func handleLibrarySelection(assetID: UUID, modifiers: NSEvent.ModifierFlags) {
+        if modifiers.contains(.shift) {
+            extendSelection(to: assetID)
+            return
+        }
+        if modifiers.contains(.command) {
+            toggleSelection(for: assetID)
+            return
+        }
+        selectSingleAsset(assetID)
+    }
+
+    func selectSingleAsset(_ assetID: UUID) {
+        applySelection([assetID], anchor: assetID)
+    }
+
+    func toggleSelection(for assetID: UUID) {
+        var nextSelection = selectedAssetIDs
+        if nextSelection.contains(assetID) {
+            nextSelection.remove(assetID)
+        } else {
+            nextSelection.insert(assetID)
+        }
+        applySelection(nextSelection, anchor: assetID)
+    }
+
+    func extendSelection(to assetID: UUID) {
+        guard
+            let anchorID = selectionAnchorAssetID,
+            let anchorIndex = assets.firstIndex(where: { $0.id == anchorID }),
+            let targetIndex = assets.firstIndex(where: { $0.id == assetID })
+        else {
+            selectSingleAsset(assetID)
+            return
+        }
+
+        let lowerBound = min(anchorIndex, targetIndex)
+        let upperBound = max(anchorIndex, targetIndex)
+        let rangeIDs = Set(assets[lowerBound...upperBound].map(\.id))
+        applySelection(rangeIDs, anchor: anchorID)
+    }
+
+    func clearSelection() {
+        applySelection([], anchor: nil)
+    }
+
+    func activateCompareMode() {
+        guard canCompareSelection else { return }
+        libraryDetailMode = .compare
+    }
+
+    func exitCompareMode() {
+        libraryDetailMode = .browse
+    }
+
+    func openSelectedAssetForEditing() {
+        guard selectedAsset != nil else { return }
+        workspaceMode = .edit
+        libraryDetailMode = .browse
+    }
+
+    func showLibrary() {
+        workspaceMode = .library
+    }
+
     private func gpxCandidateAssets() throws -> [Asset] {
         if !selectedAssetIDs.isEmpty {
             return selectedAssets
@@ -293,6 +371,14 @@ final class AppState {
         if let previewPath {
             assets[index].previewPath = previewPath
             assets[index].previewStatus = .ready
+        }
+    }
+
+    private func applySelection(_ selection: Set<UUID>, anchor: UUID?) {
+        selectedAssetIDs = selection
+        selectionAnchorAssetID = anchor.flatMap { selection.contains($0) ? $0 : selection.first }
+        if libraryDetailMode == .compare, selectedAssetIDs.count != 2 {
+            libraryDetailMode = .browse
         }
     }
 }

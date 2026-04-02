@@ -7,9 +7,9 @@ import SwiftUI
 @MainActor
 @Observable
 final class EditorSession {
-    enum ZoomMode: String, CaseIterable, Identifiable {
-        case fit
-        case actualPixels
+    enum ToolMode: String, CaseIterable, Identifiable {
+        case adjust
+        case crop
 
         var id: String { rawValue }
     }
@@ -18,44 +18,68 @@ final class EditorSession {
     let assetID: UUID
     let sourcePath: String
     let renderer: CoreImageDevelopRenderer
+    let sourcePixelSize: CGSize
     private let catalogStore: GRDBCatalogStore
     private let previewService: PreviewService
 
     var committedSettings: DevelopSettings
     var currentSettings: DevelopSettings
     var showOriginal = false
-    var zoomMode: ZoomMode = .fit
+    var toolMode: ToolMode = .adjust
+    var zoomScale: Double?
     var panOffset: CGSize = .zero
+    var viewportSize: CGSize = .zero
+    var displayImage: CIImage?
     var isPersisting = false
+    var isRenderingPreview = false
     var lastError = ""
 
     private var saveTask: Task<Void, Never>?
+    private var renderTask: Task<Void, Never>?
     private var latestSaveID = UUID()
+    private var latestRenderID = UUID()
 
     init(state: AppState, asset: Asset) {
         self.state = state
         assetID = asset.id
         sourcePath = asset.sourcePath
         renderer = state.environment.renderer
+        sourcePixelSize = CGSize(width: max(asset.pixelWidth, 1), height: max(asset.pixelHeight, 1))
         catalogStore = state.environment.catalogStore
         previewService = state.environment.previewService
         committedSettings = asset.developSettings
         currentSettings = asset.developSettings
+        queuePreviewRender(delayMilliseconds: 0)
+    }
+
+    var isFitZoom: Bool {
+        zoomScale == nil
+    }
+
+    var zoomLabel: String {
+        if let zoomScale {
+            "\(Int((zoomScale * 100).rounded()))%"
+        } else {
+            "Fit"
+        }
     }
 
     func update(_ transform: (inout DevelopSettings) -> Void) {
         transform(&currentSettings)
         clampSettings()
+        queuePreviewRender()
         schedulePersistence()
     }
 
     func resetAll() {
         currentSettings = .default
+        queuePreviewRender()
         schedulePersistence()
     }
 
     func reset(_ keyPath: WritableKeyPath<DevelopSettings, Double>) {
         currentSettings[keyPath: keyPath] = DevelopSettings.default[keyPath: keyPath]
+        queuePreviewRender()
         schedulePersistence()
     }
 
@@ -69,6 +93,7 @@ final class EditorSession {
             )
             currentSettings.luminanceNoiseReductionAmount = preservedLumaNoiseReductionAmount
             currentSettings.chrominanceNoiseReductionAmount = preservedChromaNoiseReductionAmount
+            queuePreviewRender()
             schedulePersistence()
         } catch {
             lastError = error.localizedDescription
@@ -97,6 +122,7 @@ final class EditorSession {
             case .vibrance:
                 currentSettings.vibrance = value
             }
+            queuePreviewRender()
             schedulePersistence()
         } catch {
             lastError = error.localizedDescription
@@ -109,6 +135,7 @@ final class EditorSession {
             let analysis = try renderer.analysis(for: URL(fileURLWithPath: sourcePath))
             currentSettings.lensCorrectionAmount = analysis.lensCorrectionSuggested ? 1 : 0
             currentSettings.vignetteCorrectionAmount = max(currentSettings.vignetteCorrectionAmount, 0.25)
+            queuePreviewRender()
             schedulePersistence()
         } catch {
             lastError = error.localizedDescription
@@ -118,12 +145,103 @@ final class EditorSession {
 
     func setCropRect(_ rect: CropRect) {
         currentSettings.cropRect = clampedCropRect(rect)
+        if toolMode == .adjust {
+            queuePreviewRender()
+        }
         schedulePersistence()
     }
 
     func resetCrop() {
         currentSettings.cropRect = .fullFrame
+        if toolMode == .adjust {
+            queuePreviewRender()
+        }
         schedulePersistence()
+    }
+
+    func setToolMode(_ toolMode: ToolMode) {
+        guard self.toolMode != toolMode else { return }
+        self.toolMode = toolMode
+        panOffset = .zero
+        queuePreviewRender(delayMilliseconds: 0)
+    }
+
+    func setShowOriginal(_ isShowingOriginal: Bool) {
+        guard showOriginal != isShowingOriginal else { return }
+        showOriginal = isShowingOriginal
+        queuePreviewRender(delayMilliseconds: 0)
+    }
+
+    func updateViewportSize(_ viewportSize: CGSize) {
+        guard abs(self.viewportSize.width - viewportSize.width) > 1 || abs(self.viewportSize.height - viewportSize.height) > 1 else {
+            return
+        }
+        self.viewportSize = viewportSize
+        queuePreviewRender(delayMilliseconds: 0)
+    }
+
+    func setFitZoom() {
+        zoomScale = nil
+        panOffset = .zero
+    }
+
+    func setActualPixelsZoom() {
+        zoomScale = 1
+        panOffset = .zero
+    }
+
+    func toggleFitZoom() {
+        if zoomScale == nil {
+            setActualPixelsZoom()
+        } else {
+            setFitZoom()
+        }
+        queuePreviewRender(delayMilliseconds: 0)
+    }
+
+    func stepZoomIn(at location: CGPoint? = nil, in containerSize: CGSize, imageExtent: CGRect? = nil) {
+        zoom(by: 1.25, at: location, in: containerSize, imageExtent: imageExtent ?? currentImageExtent)
+    }
+
+    func stepZoomOut(at location: CGPoint? = nil, in containerSize: CGSize, imageExtent: CGRect? = nil) {
+        zoom(by: 0.8, at: location, in: containerSize, imageExtent: imageExtent ?? currentImageExtent)
+    }
+
+    func zoomByScroll(deltaY: CGFloat, at location: CGPoint, in containerSize: CGSize, imageExtent: CGRect) {
+        let factor = pow(1.0015, Double(-deltaY * 10))
+        zoom(by: factor, at: location, in: containerSize, imageExtent: imageExtent)
+    }
+
+    func zoomByMagnification(_ magnification: CGFloat, at location: CGPoint, in containerSize: CGSize, imageExtent: CGRect) {
+        zoom(by: Double(1 + magnification), at: location, in: containerSize, imageExtent: imageExtent)
+    }
+
+    func pan(from baseOffset: CGSize, by translation: CGSize, in containerSize: CGSize, imageExtent: CGRect) {
+        guard canPan(in: containerSize, imageExtent: imageExtent) else {
+            panOffset = .zero
+            return
+        }
+
+        let scale = resolvedScale(for: containerSize, imageExtent: imageExtent)
+        let drawSize = CGSize(width: imageExtent.width * scale, height: imageExtent.height * scale)
+        let allowedX = max((drawSize.width - containerSize.width) / 2, 0)
+        let allowedY = max((drawSize.height - containerSize.height) / 2, 0)
+        panOffset = CGSize(
+            width: min(max(baseOffset.width + translation.width, -allowedX), allowedX),
+            height: min(max(baseOffset.height + translation.height, -allowedY), allowedY)
+        )
+    }
+
+    func canPan(in containerSize: CGSize, imageExtent: CGRect) -> Bool {
+        resolvedScale(for: containerSize, imageExtent: imageExtent) > fitScale(for: containerSize, imageExtent: imageExtent) + 0.001
+    }
+
+    func displayPreviewSettings() -> DevelopSettings {
+        var previewSettings = showOriginal ? .default : currentSettings
+        if toolMode == .crop {
+            previewSettings.cropRect = .fullFrame
+        }
+        return previewSettings
     }
 
     func flushPendingEdits() {
@@ -131,44 +249,117 @@ final class EditorSession {
         persist(settings: currentSettings, saveID: beginPersistence())
     }
 
-    func previewImage(maxPixelSize: Int?) -> CIImage? {
-        do {
-            var previewSettings = currentSettings
-            previewSettings.cropRect = .fullFrame
-            return try renderer.previewImage(
-                from: URL(fileURLWithPath: sourcePath),
-                settings: showOriginal ? .default : previewSettings,
-                maxPixelSize: maxPixelSize
-            )
-        } catch {
-            lastError = error.localizedDescription
-            state?.statusMessage = error.localizedDescription
-            return nil
-        }
+    var currentImageExtent: CGRect {
+        displayImage?.extent ?? CGRect(origin: .zero, size: sourcePixelSize)
     }
 
-    func setZoomMode(_ zoomMode: ZoomMode) {
-        self.zoomMode = zoomMode
-        if zoomMode == .fit {
-            panOffset = .zero
-        }
-    }
+    private func zoom(by factor: Double, at location: CGPoint?, in containerSize: CGSize, imageExtent: CGRect) {
+        guard containerSize.width > 0, containerSize.height > 0 else { return }
 
-    func pan(by translation: CGSize, in containerSize: CGSize, imageExtent: CGRect) {
-        pan(from: .zero, by: translation, in: containerSize, imageExtent: imageExtent)
-    }
+        let previousScale = resolvedScale(for: containerSize, imageExtent: imageExtent)
+        let requestedScale = clampedZoomScale((zoomScale ?? fitScale(for: containerSize, imageExtent: imageExtent)) * factor)
+        zoomScale = abs(requestedScale - fitScale(for: containerSize, imageExtent: imageExtent)) < 0.01 ? nil : requestedScale
 
-    func pan(from baseOffset: CGSize, by translation: CGSize, in containerSize: CGSize, imageExtent: CGRect) {
-        guard zoomMode == .actualPixels else {
-            panOffset = .zero
+        let nextScale = resolvedScale(for: containerSize, imageExtent: imageExtent)
+        guard let location else {
+            panOffset = clampedPanOffset(panOffset, in: containerSize, imageExtent: imageExtent, scale: nextScale)
+            queuePreviewRender(delayMilliseconds: 0)
             return
         }
 
-        let allowedX = max((imageExtent.width - containerSize.width) / 2, 0)
-        let allowedY = max((imageExtent.height - containerSize.height) / 2, 0)
-        panOffset = CGSize(
-            width: min(max(baseOffset.width + translation.width, -allowedX), allowedX),
-            height: min(max(baseOffset.height + translation.height, -allowedY), allowedY)
+        let previousRect = fittedImageRect(
+            imageExtent: imageExtent,
+            containerSize: containerSize,
+            zoomScale: previousScale,
+            panOffset: panOffset
+        )
+        let newDrawSize = CGSize(width: imageExtent.width * nextScale, height: imageExtent.height * nextScale)
+        let normalizedX = previousRect.width > 0 ? (location.x - previousRect.minX) / previousRect.width : 0.5
+        let normalizedY = previousRect.height > 0 ? (location.y - previousRect.minY) / previousRect.height : 0.5
+        let centeredOrigin = CGPoint(
+            x: (containerSize.width - newDrawSize.width) / 2,
+            y: (containerSize.height - newDrawSize.height) / 2
+        )
+        let proposedPan = CGSize(
+            width: location.x - (normalizedX * newDrawSize.width) - centeredOrigin.x,
+            height: location.y - (normalizedY * newDrawSize.height) - centeredOrigin.y
+        )
+        panOffset = clampedPanOffset(proposedPan, in: containerSize, imageExtent: imageExtent, scale: nextScale)
+        queuePreviewRender(delayMilliseconds: 0)
+    }
+
+    private func queuePreviewRender(delayMilliseconds: UInt64 = 80) {
+        let renderID = UUID()
+        latestRenderID = renderID
+        isRenderingPreview = true
+        renderTask?.cancel()
+
+        let sourceURL = URL(fileURLWithPath: sourcePath)
+        let settings = displayPreviewSettings()
+        let maxPixelSize = requestedPreviewPixelSize(for: settings)
+
+        renderTask = Task.detached(priority: .userInitiated) { [renderer, weak self, weak state] in
+            do {
+                if delayMilliseconds > 0 {
+                    try await Task.sleep(for: .milliseconds(delayMilliseconds))
+                }
+                if Task.isCancelled { return }
+                let image = try renderer.previewImage(from: sourceURL, settings: settings, maxPixelSize: maxPixelSize)
+                await MainActor.run {
+                    guard self?.latestRenderID == renderID else { return }
+                    self?.displayImage = image
+                    self?.isRenderingPreview = false
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                await MainActor.run {
+                    guard self?.latestRenderID == renderID else { return }
+                    self?.displayImage = nil
+                    self?.isRenderingPreview = false
+                    self?.lastError = error.localizedDescription
+                    state?.statusMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func requestedPreviewPixelSize(for settings: DevelopSettings) -> Int? {
+        let viewportMax = max(viewportSize.width, viewportSize.height)
+        guard viewportMax > 0 else { return 2048 }
+
+        let imageExtent = CGRect(origin: .zero, size: sourcePixelSize)
+        let scale = resolvedScale(for: viewportSize, imageExtent: imageExtent)
+        let requested = Int((viewportMax * max(scale, 1) * 2).rounded(.up))
+        let sourceMaxDimension = Int(max(sourcePixelSize.width, sourcePixelSize.height))
+        return min(max(requested, 2048), max(sourceMaxDimension, 2048))
+    }
+
+    private func resolvedScale(for containerSize: CGSize, imageExtent: CGRect) -> Double {
+        guard let zoomScale else {
+            return fitScale(for: containerSize, imageExtent: imageExtent)
+        }
+        return clampedZoomScale(zoomScale)
+    }
+
+    private func fitScale(for containerSize: CGSize, imageExtent: CGRect) -> Double {
+        guard imageExtent.width > 0, imageExtent.height > 0, containerSize.width > 0, containerSize.height > 0 else {
+            return 1
+        }
+        return min(containerSize.width / imageExtent.width, containerSize.height / imageExtent.height)
+    }
+
+    private func clampedZoomScale(_ zoomScale: Double) -> Double {
+        min(max(zoomScale, 0.25), 8)
+    }
+
+    private func clampedPanOffset(_ proposedPan: CGSize, in containerSize: CGSize, imageExtent: CGRect, scale: Double) -> CGSize {
+        let drawSize = CGSize(width: imageExtent.width * scale, height: imageExtent.height * scale)
+        let allowedX = max((drawSize.width - containerSize.width) / 2, 0)
+        let allowedY = max((drawSize.height - containerSize.height) / 2, 0)
+        return CGSize(
+            width: min(max(proposedPan.width, -allowedX), allowedX),
+            height: min(max(proposedPan.height, -allowedY), allowedY)
         )
     }
 
