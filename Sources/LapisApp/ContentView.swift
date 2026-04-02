@@ -36,8 +36,6 @@ struct ContentView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .fixedSize()
-                .controlSize(.regular)
             }
 
             ToolbarItemGroup(placement: .primaryAction) {
@@ -64,15 +62,6 @@ struct ContentView: View {
             }
 
             ToolbarItemGroup(placement: .secondaryAction) {
-                Button {
-                    state.showLibrary()
-                    columnVisibility = .automatic
-                } label: {
-                    Label("Library", systemImage: "sidebar.left")
-                }
-                .labelStyle(.titleAndIcon)
-                .disabled(state.workspaceMode == .library)
-
                 Button {
                     state.activateCompareMode()
                 } label: {
