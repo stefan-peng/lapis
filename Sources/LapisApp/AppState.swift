@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import LapisCore
 import Observation
+import OSLog
 import UniformTypeIdentifiers
 
 @MainActor
@@ -71,13 +72,21 @@ final class AppState {
     var albumNameDraft = ""
     var selectionAnchorAssetID: UUID?
 
+    private var assetIndexByID: [UUID: Int] = [:]
+    private var pendingEditOpenStartNanos: UInt64?
+
     init(environment: AppEnvironment) throws {
         self.environment = environment
         try reload()
     }
 
     var selectedAssets: [Asset] {
-        assets.filter { selectedAssetIDs.contains($0.id) }
+        selectedAssetIDs
+            .compactMap { assetID in
+                assetIndexByID[assetID].map { (index: $0, asset: assets[$0]) }
+            }
+            .sorted { $0.index < $1.index }
+            .map(\.asset)
     }
 
     var geotaggedAssets: [Asset] {
@@ -85,8 +94,9 @@ final class AppState {
     }
 
     var selectedAsset: Asset? {
-        guard selectedAssetIDs.count == 1 else { return nil }
-        return selectedAssets.first
+        guard selectedAssetIDs.count == 1, let selectedAssetID = selectedAssetIDs.first,
+              let index = assetIndexByID[selectedAssetID] else { return nil }
+        return assets[index]
     }
 
     var compareAssets: [Asset] {
@@ -101,6 +111,7 @@ final class AppState {
         var activeFilter = filter
         activeFilter.albumID = selectedAlbumID
         assets = try environment.catalogStore.fetchAssets(filter: activeFilter)
+        rebuildAssetIndex()
         albums = try environment.catalogStore.fetchAlbums()
         applySelection(selectedAssetIDs.intersection(Set(assets.map(\.id))), anchor: selectionAnchorAssetID)
     }
@@ -325,6 +336,8 @@ final class AppState {
 
     func openSelectedAssetForEditing() {
         guard selectedAsset != nil else { return }
+        pendingEditOpenStartNanos = DispatchTime.now().uptimeNanoseconds
+        AppPerformanceMetrics.event("editor.open.requested", details: "selectedCount=\(selectedAssetIDs.count)")
         workspaceMode = .edit
         libraryDetailMode = .browse
     }
@@ -344,7 +357,7 @@ final class AppState {
     }
 
     func applyEditorCommit(assetID: UUID, settings: DevelopSettings, previewPath: String?, previewStatus: PreviewStatus) {
-        guard let index = assets.firstIndex(where: { $0.id == assetID }) else { return }
+        guard let index = assetIndexByID[assetID] else { return }
         assets[index].developSettings = settings
         assets[index].previewPath = previewPath
         assets[index].previewStatus = previewStatus
@@ -359,8 +372,104 @@ final class AppState {
     }
 
     private func applySelectionIntent(_ intent: LibrarySelectionIntent) {
+        let span = AppPerformanceMetrics.begin(
+            "library.selection",
+            details: "mode=\(selectionMetricLabel(for: intent)) selectedBefore=\(selectedAssetIDs.count) assets=\(assets.count)"
+        )
         let current = LibrarySelectionState(selectedAssetIDs: selectedAssetIDs, anchorAssetID: selectionAnchorAssetID)
         let next = current.applying(intent, orderedAssetIDs: assets.map(\.id))
         applySelection(next.selectedAssetIDs, anchor: next.anchorAssetID)
+        AppPerformanceMetrics.end(span, details: "selectedAfter=\(selectedAssetIDs.count)")
+    }
+
+    private func rebuildAssetIndex() {
+        assetIndexByID = Dictionary(uniqueKeysWithValues: assets.enumerated().map { index, asset in
+            (asset.id, index)
+        })
+    }
+
+    func consumePendingEditOpenStartNanos() -> UInt64? {
+        let start = pendingEditOpenStartNanos
+        pendingEditOpenStartNanos = nil
+        return start
+    }
+
+    private func selectionMetricLabel(for intent: LibrarySelectionIntent) -> String {
+        switch intent {
+        case .replace:
+            "replace"
+        case .toggle:
+            "toggle"
+        case .extendRange:
+            "range"
+        case .clear:
+            "clear"
+        }
+    }
+}
+
+enum AppPerformanceMetrics {
+    private static let logger = Logger(subsystem: "com.speng.lapis", category: "Performance")
+
+    static var isEnabled: Bool {
+        let arguments = ProcessInfo.processInfo.arguments
+        let environment = ProcessInfo.processInfo.environment
+
+        if arguments.contains("-LAPIS_PERF_LOGS") {
+            return true
+        }
+
+        guard let rawValue = environment["LAPIS_PERF_LOGS"]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() else {
+            return false
+        }
+
+        return rawValue == "1" || rawValue == "true" || rawValue == "yes"
+    }
+
+    struct Span {
+        let label: String
+        let startNanos: UInt64
+        let details: String
+    }
+
+    static func begin(_ label: String, details: String = "") -> Span? {
+        guard isEnabled else { return nil }
+        return Span(label: label, startNanos: DispatchTime.now().uptimeNanoseconds, details: details)
+    }
+
+    static func end(_ span: Span?, details: String = "") {
+        guard let span else { return }
+        let elapsed = milliseconds(since: span.startNanos)
+        let mergedDetails = [span.details, details]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        let message = mergedDetails.isEmpty
+            ? "elapsed_ms=\(format(elapsed))"
+            : "\(mergedDetails) elapsed_ms=\(format(elapsed))"
+        emit("\(span.label) \(message)")
+    }
+
+    static func event(_ label: String, details: String = "") {
+        guard isEnabled else { return }
+        let trimmedDetails = details.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedDetails.isEmpty {
+            emit(label)
+        } else {
+            emit("\(label) \(trimmedDetails)")
+        }
+    }
+
+    static func milliseconds(since startNanos: UInt64) -> Double {
+        Double(DispatchTime.now().uptimeNanoseconds - startNanos) / 1_000_000
+    }
+
+    static func format(_ milliseconds: Double) -> String {
+        String(format: "%.2f", milliseconds)
+    }
+
+    private static func emit(_ message: String) {
+        logger.notice("\(message, privacy: .public)")
+        NSLog("%@", "[LapisPerf] \(message)")
     }
 }

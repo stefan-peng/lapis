@@ -26,6 +26,7 @@ struct ContentView: View {
         }
         .inspector(isPresented: $showsInspector) {
             inspectorPane
+                .controlSize(.small)
                 .inspectorColumnWidth(min: 280, ideal: 320, max: 400)
         }
         .navigationTitle(navigationTitle)
@@ -76,8 +77,9 @@ struct ContentView: View {
                 Button {
                     showsInspector.toggle()
                 } label: {
-                    Label("Show Info", systemImage: "sidebar.right")
+                    Label("Inspector", systemImage: "sidebar.right")
                 }
+                .help(showsInspector ? "Hide Inspector" : "Show Inspector")
                 .keyboardShortcut("i", modifiers: [.command])
             }
         }
@@ -122,8 +124,19 @@ struct ContentView: View {
     private func syncEditorSession() {
         if state.workspaceMode == .edit, let asset = state.selectedAsset {
             if editorSession?.assetID != asset.id {
+                let span = AppPerformanceMetrics.begin("editor.session.sync", details: "asset=\(asset.id.uuidString)")
                 editorSession?.flushPendingEdits()
-                editorSession = EditorSession(state: state, asset: asset)
+                let session = EditorSession(state: state, asset: asset)
+                editorSession = session
+
+                if let startNanos = state.consumePendingEditOpenStartNanos() {
+                    AppPerformanceMetrics.event(
+                        "editor.open.completed",
+                        details: "asset=\(asset.id.uuidString) bootstrapPreview=\(session.displayImage != nil) elapsed_ms=\(AppPerformanceMetrics.format(AppPerformanceMetrics.milliseconds(since: startNanos)))"
+                    )
+                }
+
+                AppPerformanceMetrics.end(span, details: "bootstrapPreview=\(session.displayImage != nil)")
             }
         } else {
             if editorSession != nil {
@@ -202,33 +215,6 @@ struct ContentView: View {
         .listStyle(.sidebar)
         .onChange(of: state.filter) { _, _ in reload() }
     }
-
-    @ViewBuilder
-    private func optionalDateFilter(title: String, value: Binding<Date?>) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if let wrappedValue = value.wrappedValue {
-                DatePicker(
-                    title,
-                    selection: Binding(
-                        get: { wrappedValue },
-                        set: { value.wrappedValue = $0 }
-                    ),
-                    displayedComponents: .date
-                )
-                Button("Clear \(title)") {
-                    value.wrappedValue = nil
-                }
-                .buttonStyle(.plain)
-                .font(.caption)
-            } else {
-                Button("Set \(title)") {
-                    value.wrappedValue = .now
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
     private func reload() {
         do {
             try state.reload()
@@ -384,7 +370,7 @@ private struct AssetThumbnailView: View {
     private var preview: some View {
         if
             let previewPath = asset.previewPath,
-            let nsImage = NSImage(contentsOfFile: previewPath)
+            let nsImage = PreviewImageLoader.loadPreviewImage(from: previewPath)
         {
             Image(nsImage: nsImage)
                 .resizable()
@@ -427,7 +413,7 @@ private struct AssetPreviewPanel: View {
         }
         if
             let previewPath = asset.previewPath,
-            let image = NSImage(contentsOfFile: previewPath)
+            let image = PreviewImageLoader.loadPreviewImage(from: previewPath)
         {
             return image
         }
@@ -442,56 +428,66 @@ private struct LibraryInspectorView: View {
     var body: some View {
         InspectorScrollView {
             if let asset {
-                InspectorSection("Selection") {
+                InspectorSection("Selection", showsDivider: false) {
                     Text(URL(fileURLWithPath: asset.sourcePath).lastPathComponent)
-                        .font(.headline)
+                        .font(.body.weight(.medium))
                         .lineLimit(2)
+                        .textSelection(.enabled)
                     Text("Photo details and adjustments")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
                 InspectorSection("Metadata") {
-                    LabeledContent("Camera", value: [asset.cameraMake, asset.cameraModel].compactMap { $0 }.joined(separator: " "))
-                    LabeledContent("Lens", value: asset.lensModel ?? "Unknown")
-                    LabeledContent("Size", value: "\(asset.pixelWidth) × \(asset.pixelHeight)")
-                    TextField("Keywords", text: Binding(
-                        get: { asset.keywords.joined(separator: ", ") },
-                        set: { state.updateSelectedAssetMetadata(keywords: $0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }) }
-                    ))
-                    Picker("Flag", selection: Binding(
-                        get: { asset.flag },
-                        set: { state.updateSelectedAssetMetadata(flag: $0) }
-                    )) {
-                        ForEach(AssetFlag.allCases, id: \.self) { flag in
-                            Text(flag.rawValue.capitalized).tag(flag)
+                    InspectorValueRow("Camera", value: [asset.cameraMake, asset.cameraModel].compactMap { $0 }.joined(separator: " "))
+                    InspectorValueRow("Lens", value: asset.lensModel ?? "Unknown")
+                    InspectorValueRow("Size", value: "\(asset.pixelWidth) × \(asset.pixelHeight)")
+
+                    InspectorPropertyRow("Keywords") {
+                        TextField("Add keywords", text: Binding(
+                            get: { asset.keywords.joined(separator: ", ") },
+                            set: { state.updateSelectedAssetMetadata(keywords: $0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }) }
+                        ))
+                    }
+
+                    InspectorPropertyRow("Flag") {
+                        Picker("Flag", selection: Binding(
+                            get: { asset.flag },
+                            set: { state.updateSelectedAssetMetadata(flag: $0) }
+                        )) {
+                            ForEach(AssetFlag.allCases, id: \.self) { flag in
+                                Text(flag.rawValue.capitalized).tag(flag)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                    }
+
+                    InspectorPropertyRow("Rating") {
+                        Stepper(
+                            value: Binding(
+                                get: { asset.rating },
+                                set: { state.updateSelectedAssetMetadata(rating: $0) }
+                            ),
+                            in: 0...5
+                        ) {
+                            Text("\(asset.rating) star\(asset.rating == 1 ? "" : "s")")
                         }
                     }
-                    Stepper(
-                        "Rating: \(asset.rating)",
-                        value: Binding(
-                            get: { asset.rating },
-                            set: { state.updateSelectedAssetMetadata(rating: $0) }
-                        ),
-                        in: 0...5
-                    )
                 }
 
                 if let coordinate = asset.gpsCoordinate {
                     InspectorSection("Map") {
-                        Map(initialPosition: .region(.init(
-                            center: .init(latitude: coordinate.latitude, longitude: coordinate.longitude),
-                            span: .init(latitudeDelta: 0.05, longitudeDelta: 0.05)
-                        ))) {
-                            Marker(URL(fileURLWithPath: asset.sourcePath).lastPathComponent, coordinate: .init(latitude: coordinate.latitude, longitude: coordinate.longitude))
-                        }
-                        .frame(height: 240)
+                        InspectorMapSnapshotView(
+                            coordinate: coordinate,
+                            title: URL(fileURLWithPath: asset.sourcePath).lastPathComponent
+                        )
                     }
                 }
             } else {
-                InspectorSection("Selection") {
+                InspectorSection("Selection", showsDivider: false) {
                     Text("No Photo Selected")
-                        .font(.headline)
+                        .font(.body.weight(.medium))
                     Text("Select a photo to inspect it, or use the controls below to narrow the library.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -499,37 +495,52 @@ private struct LibraryInspectorView: View {
             }
 
             InspectorSection("Filters") {
-                Toggle("Picked Only", isOn: $state.filter.flaggedOnly)
-                Toggle("Geotagged Only", isOn: $state.filter.geotaggedOnly)
-                Stepper(
-                    "Minimum Rating: \(state.filter.minimumRating ?? 0)",
-                    value: Binding(
-                        get: { state.filter.minimumRating ?? 0 },
-                        set: { state.filter.minimumRating = $0 == 0 ? nil : $0 }
-                    ),
-                    in: 0...5
-                )
-                TextField("Keyword", text: Binding(
-                    get: { state.filter.keyword ?? "" },
-                    set: { state.filter.keyword = $0.isEmpty ? nil : $0 }
-                ))
-                TextField("Camera Contains", text: Binding(
-                    get: { state.filter.cameraContains ?? "" },
-                    set: { state.filter.cameraContains = $0.isEmpty ? nil : $0 }
-                ))
-                TextField("Lens Contains", text: Binding(
-                    get: { state.filter.lensContains ?? "" },
-                    set: { state.filter.lensContains = $0.isEmpty ? nil : $0 }
-                ))
-                optionalDateFilter(
-                    title: "Captured After",
+                Toggle("Picked only", isOn: $state.filter.flaggedOnly)
+                Toggle("Geotagged only", isOn: $state.filter.geotaggedOnly)
+
+                InspectorPropertyRow("Rating") {
+                    Stepper(
+                        value: Binding(
+                            get: { state.filter.minimumRating ?? 0 },
+                            set: { state.filter.minimumRating = $0 == 0 ? nil : $0 }
+                        ),
+                        in: 0...5
+                    ) {
+                        Text(state.filter.minimumRating.map { "\($0)+ stars" } ?? "Any")
+                    }
+                }
+
+                InspectorPropertyRow("Keyword") {
+                    TextField("Contains", text: Binding(
+                        get: { state.filter.keyword ?? "" },
+                        set: { state.filter.keyword = $0.isEmpty ? nil : $0 }
+                    ))
+                }
+
+                InspectorPropertyRow("Camera") {
+                    TextField("Contains", text: Binding(
+                        get: { state.filter.cameraContains ?? "" },
+                        set: { state.filter.cameraContains = $0.isEmpty ? nil : $0 }
+                    ))
+                }
+
+                InspectorPropertyRow("Lens") {
+                    TextField("Contains", text: Binding(
+                        get: { state.filter.lensContains ?? "" },
+                        set: { state.filter.lensContains = $0.isEmpty ? nil : $0 }
+                    ))
+                }
+
+                optionalDateFilterRow(
+                    "From",
                     value: Binding(
                         get: { state.filter.capturedAfter },
                         set: { state.filter.capturedAfter = $0 }
                     )
                 )
-                optionalDateFilter(
-                    title: "Captured Before",
+
+                optionalDateFilterRow(
+                    "To",
                     value: Binding(
                         get: { state.filter.capturedBefore },
                         set: { state.filter.capturedBefore = $0 }
@@ -538,58 +549,75 @@ private struct LibraryInspectorView: View {
             }
 
             InspectorSection("Albums") {
-                TextField("New Album", text: $state.albumNameDraft)
+                InspectorPropertyRow("Name") {
+                    TextField("New album", text: $state.albumNameDraft)
+                }
                 Button("Create Album", action: state.createAlbumFromDraft)
+                    .buttonStyle(.bordered)
                     .disabled(state.albumNameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
 
             InspectorSection("Export") {
-                Picker("Preset", selection: $state.selectedExportPresetID) {
-                    ForEach(state.exportPresets) { preset in
-                        Text(preset.name).tag(preset.id)
+                InspectorPropertyRow("Preset") {
+                    Picker("Preset", selection: $state.selectedExportPresetID) {
+                        ForEach(state.exportPresets) { preset in
+                            Text(preset.name).tag(preset.id)
+                        }
                     }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
                 }
             }
 
             InspectorSection("Geotagging") {
-                Stepper(
-                    "Timezone Offset: \(state.gpxTimezoneOffsetMinutes) min",
-                    value: $state.gpxTimezoneOffsetMinutes,
-                    in: -720...720,
-                    step: 15
-                )
-                Stepper(
-                    "Camera Offset: \(state.gpxCameraClockOffsetSeconds) sec",
-                    value: $state.gpxCameraClockOffsetSeconds,
-                    in: -43_200...43_200,
-                    step: 30
-                )
+                InspectorPropertyRow("Timezone") {
+                    Stepper(
+                        value: $state.gpxTimezoneOffsetMinutes,
+                        in: -720...720,
+                        step: 15
+                    ) {
+                        Text("\(state.gpxTimezoneOffsetMinutes) min")
+                    }
+                }
+
+                InspectorPropertyRow("Clock") {
+                    Stepper(
+                        value: $state.gpxCameraClockOffsetSeconds,
+                        in: -43_200...43_200,
+                        step: 30
+                    ) {
+                        Text("\(state.gpxCameraClockOffsetSeconds) sec")
+                    }
+                }
             }
         }
     }
 
     @ViewBuilder
-    private func optionalDateFilter(title: String, value: Binding<Date?>) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+    private func optionalDateFilterRow(_ label: String, value: Binding<Date?>) -> some View {
+        InspectorPropertyRow(label) {
             if let wrappedValue = value.wrappedValue {
-                DatePicker(
-                    title,
-                    selection: Binding(
-                        get: { wrappedValue },
-                        set: { value.wrappedValue = $0 }
-                    ),
-                    displayedComponents: .date
-                )
-                Button("Clear \(title)") {
-                    value.wrappedValue = nil
+                HStack(spacing: 8) {
+                    DatePicker(
+                        "",
+                        selection: Binding(
+                            get: { wrappedValue },
+                            set: { value.wrappedValue = $0 }
+                        ),
+                        displayedComponents: .date
+                    )
+                    .labelsHidden()
+
+                    Button("Clear") {
+                        value.wrappedValue = nil
+                    }
+                    .buttonStyle(.borderless)
                 }
-                .buttonStyle(.plain)
-                .font(.caption)
             } else {
-                Button("Set \(title)") {
+                Button("Set") {
                     value.wrappedValue = .now
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderless)
             }
         }
     }
@@ -751,7 +779,7 @@ private struct EditorInspectorView: View {
 
     var body: some View {
         InspectorScrollView {
-            InspectorSection(nil) {
+            InspectorSection(nil, showsDivider: false) {
                 Picker("Tool", selection: Binding(
                     get: { session.toolMode },
                     set: { session.setToolMode($0) }
@@ -885,14 +913,17 @@ private struct EditorInspectorView: View {
     @ViewBuilder
     private var cropInspectorContent: some View {
         InspectorSection("Crop") {
-            Picker("Aspect Ratio", selection: $session.cropAspectRatio) {
-                ForEach(CropAspectRatioPreset.allCases) { ratio in
-                    Text(ratio.label).tag(ratio)
+            InspectorPropertyRow("Aspect Ratio") {
+                Picker("Aspect Ratio", selection: $session.cropAspectRatio) {
+                    ForEach(CropAspectRatioPreset.allCases) { ratio in
+                        Text(ratio.label).tag(ratio)
+                    }
                 }
-            }
-            .pickerStyle(.menu)
-            .onChange(of: session.cropAspectRatio) { _, newValue in
-                session.setCropRect(newValue.adjustedRect(from: session.currentSettings.cropRect))
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .onChange(of: session.cropAspectRatio) { _, newValue in
+                    session.setCropRect(newValue.adjustedRect(from: session.currentSettings.cropRect))
+                }
             }
 
             Text("Drag inside the frame to move the crop. Drag the corners to resize.")
@@ -972,11 +1003,11 @@ private struct InspectorScrollView<Content: View>: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 8) {
                 content
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
+            .padding(.vertical, 12)
         }
         .background(InspectorScrollViewConfigurator())
     }
@@ -1005,27 +1036,205 @@ private struct InspectorScrollViewConfigurator: NSViewRepresentable {
 
 private struct InspectorSection<Content: View>: View {
     let title: String?
+    let showsDivider: Bool
+    @ViewBuilder let content: Content
+    @State private var isExpanded: Bool
+
+    init(_ title: String?, showsDivider: Bool = true, defaultExpanded: Bool = true, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.showsDivider = showsDivider
+        self.content = content()
+        _isExpanded = State(initialValue: defaultExpanded)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let title, !title.isEmpty {
+                DisclosureGroup(isExpanded: $isExpanded) {
+                    sectionContent
+                        .padding(.top, 10)
+                } label: {
+                    Text(title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                sectionContent
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var sectionContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            content
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct InspectorPropertyRow<Content: View>: View {
+    let label: String
+    let labelWidth: CGFloat
     @ViewBuilder let content: Content
 
-    init(_ title: String?, @ViewBuilder content: () -> Content) {
-        self.title = title
+    init(_ label: String, labelWidth: CGFloat = 88, @ViewBuilder content: () -> Content) {
+        self.label = label
+        self.labelWidth = labelWidth
         self.content = content()
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if let title, !title.isEmpty {
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-            }
-            VStack(alignment: .leading, spacing: 10) {
-                content
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+        HStack(alignment: .center, spacing: 12) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: labelWidth, alignment: .leading)
+
+            content
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
+}
+
+private struct InspectorValueRow: View {
+    let label: String
+    let value: String
+
+    init(_ label: String, value: String) {
+        self.label = label
+        self.value = value
+    }
+
+    var body: some View {
+        InspectorPropertyRow(label) {
+            Text(value.isEmpty ? "—" : value)
+                .font(.caption)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .multilineTextAlignment(.trailing)
+                .textSelection(.enabled)
+        }
+    }
+}
+
+private final class InspectorMapSnapshotCacheEntry: NSObject {
+    let image: NSImage
+    let markerPoint: CGPoint
+
+    init(image: NSImage, markerPoint: CGPoint) {
+        self.image = image
+        self.markerPoint = markerPoint
+    }
+}
+
+@MainActor
+private struct InspectorMapSnapshotView: View {
+    let coordinate: GPSCoordinate
+    let title: String
+
+    @State private var snapshotImage: NSImage?
+    @State private var markerPoint = CGPoint(x: 160, y: 90)
+    @State private var isLoading = false
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+
+            if let snapshotImage {
+                Image(nsImage: snapshotImage)
+                    .resizable()
+                    .scaledToFill()
+            } else if isLoading {
+                ProgressView()
+                    .controlSize(.small)
+            } else {
+                Image(systemName: "map")
+                    .foregroundStyle(.secondary)
+            }
+
+            if snapshotImage != nil {
+                Image(systemName: "mappin.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(.red, .white)
+                    .shadow(color: Color.black.opacity(0.18), radius: 2, y: 1)
+                    .position(markerPoint)
+                    .allowsHitTesting(false)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 180)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(.quaternary)
+        }
+        .task(id: taskID) {
+            await loadSnapshot()
+        }
+    }
+
+    private var taskID: String {
+        "\(coordinate.latitude),\(coordinate.longitude),\(title)"
+    }
+
+    private var cacheKey: NSString {
+        "\(coordinate.latitude),\(coordinate.longitude),320x180" as NSString
+    }
+
+    @MainActor
+    private func loadSnapshot() async {
+        if let cached = Self.cache.object(forKey: cacheKey) {
+            snapshotImage = cached.image
+            markerPoint = cached.markerPoint
+            isLoading = false
+            AppPerformanceMetrics.event("inspector.mapSnapshot", details: "title=\(title) cached=true")
+            return
+        }
+
+        let span = AppPerformanceMetrics.begin("inspector.mapSnapshot", details: "title=\(title) cached=false")
+        isLoading = true
+        snapshotImage = nil
+
+        let size = CGSize(width: 320, height: 180)
+        let mapCoordinate = CLLocationCoordinate2D(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let options = MKMapSnapshotter.Options()
+        options.size = size
+        options.showsBuildings = true
+        options.pointOfInterestFilter = .excludingAll
+        options.region = MKCoordinateRegion(
+            center: mapCoordinate,
+            span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+        )
+
+        do {
+            let snapshot = try await MKMapSnapshotter(options: options).start()
+            snapshotImage = snapshot.image
+            let point = snapshot.point(for: mapCoordinate)
+            markerPoint = CGPoint(
+                x: min(max(point.x, 14), size.width - 14),
+                y: min(max(point.y, 14), size.height - 14)
+            )
+            Self.cache.setObject(
+                InspectorMapSnapshotCacheEntry(image: snapshot.image, markerPoint: markerPoint),
+                forKey: cacheKey
+            )
+            AppPerformanceMetrics.end(span, details: "status=ready")
+        } catch {
+            snapshotImage = nil
+            AppPerformanceMetrics.end(span, details: "status=failed")
+        }
+
+        isLoading = false
+    }
+
+    private static let cache: NSCache<NSString, InspectorMapSnapshotCacheEntry> = {
+        let cache = NSCache<NSString, InspectorMapSnapshotCacheEntry>()
+        cache.countLimit = 128
+        return cache
+    }()
 }
 
 private struct SliderControlSpec {
@@ -1077,22 +1286,22 @@ private struct EditorSliderRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Circle()
                     .fill(isEdited ? Color.accentColor : Color.clear)
-                    .frame(width: 8, height: 8)
+                    .frame(width: 6, height: 6)
                 Text(title)
-                    .font(.subheadline.weight(.medium))
+                    .font(.caption.weight(.medium))
                 Spacer()
                 if let autoAction {
                     Button("Auto", action: autoAction)
                         .buttonStyle(.borderless)
-                        .font(.caption)
+                        .font(.caption2)
                 }
                 Button("Reset", action: onReset)
                     .buttonStyle(.borderless)
-                    .font(.caption)
+                    .font(.caption2)
                     .foregroundStyle(isEdited ? .secondary : .tertiary)
                     .disabled(!isEdited)
             }
@@ -1245,8 +1454,50 @@ private enum CropHandle: CaseIterable, Identifiable {
     }
 }
 
+@MainActor
 private enum PreviewImageLoader {
+    private static let imageCache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 512
+        return cache
+    }()
+
+    static func loadPreviewImage(from previewPath: String) -> NSImage? {
+        let cacheKey = "preview:\(previewPath)" as NSString
+        if let image = imageCache.object(forKey: cacheKey) {
+            AppPerformanceMetrics.event(
+                "preview.image.load",
+                details: "kind=preview name=\(URL(fileURLWithPath: previewPath).lastPathComponent) cached=true"
+            )
+            return image
+        }
+
+        let span = AppPerformanceMetrics.begin(
+            "preview.image.load",
+            details: "kind=preview name=\(URL(fileURLWithPath: previewPath).lastPathComponent) cached=false"
+        )
+        let image = NSImage(contentsOfFile: previewPath)
+        if let image {
+            imageCache.setObject(image, forKey: cacheKey)
+        }
+        AppPerformanceMetrics.end(span, details: "success=\(image != nil)")
+        return image
+    }
+
     static func loadOriginalPreview(from sourcePath: String, maxPixelSize: Int = 2200) -> NSImage? {
+        let cacheKey = "original:\(sourcePath):\(maxPixelSize)" as NSString
+        if let image = imageCache.object(forKey: cacheKey) {
+            AppPerformanceMetrics.event(
+                "preview.image.load",
+                details: "kind=original name=\(URL(fileURLWithPath: sourcePath).lastPathComponent) cached=true"
+            )
+            return image
+        }
+
+        let span = AppPerformanceMetrics.begin(
+            "preview.image.load",
+            details: "kind=original name=\(URL(fileURLWithPath: sourcePath).lastPathComponent) cached=false"
+        )
         let url = URL(fileURLWithPath: sourcePath)
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -1258,9 +1509,17 @@ private enum PreviewImageLoader {
             let source = CGImageSourceCreateWithURL(url as CFURL, nil),
             let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
         else {
-            return NSImage(contentsOfFile: sourcePath)
+            let image = NSImage(contentsOfFile: sourcePath)
+            if let image {
+                imageCache.setObject(image, forKey: cacheKey)
+            }
+            AppPerformanceMetrics.end(span, details: "success=\(image != nil)")
+            return image
         }
 
-        return NSImage(cgImage: cgImage, size: .zero)
+        let image = NSImage(cgImage: cgImage, size: .zero)
+        imageCache.setObject(image, forKey: cacheKey)
+        AppPerformanceMetrics.end(span, details: "success=true")
+        return image
     }
 }

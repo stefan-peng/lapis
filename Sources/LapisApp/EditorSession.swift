@@ -99,12 +99,21 @@ final class EditorSession {
         assetEditor = state.environment.assetEditor
         committedSettings = asset.developSettings
         self.currentSettings = asset.developSettings
-        queuePreviewRender(delayMilliseconds: 0)
+        displayImage = Self.bootstrapPreviewImage(previewPath: asset.previewPath)
+        AppPerformanceMetrics.event(
+            "editor.session.bootstrap",
+            details: "asset=\(asset.id.uuidString) previewCached=\(displayImage != nil)"
+        )
     }
 
     func flushPendingEdits() {
         saveTask?.cancel()
         renderTask?.cancel()
+        isRenderingPreview = false
+        guard currentSettings != committedSettings || isPersisting else {
+            isPersisting = false
+            return
+        }
         persist(settings: currentSettings, saveID: beginPersistence())
     }
 
@@ -123,19 +132,19 @@ final class EditorSession {
     func update(_ transform: (inout DevelopSettings) -> Void) {
         transform(&currentSettings)
         clampSettings()
-        queuePreviewRender()
+        queuePreviewRender(reason: "adjustment")
         schedulePersistence()
     }
 
     func resetAll() {
         currentSettings = .default
-        queuePreviewRender()
+        queuePreviewRender(reason: "resetAll")
         schedulePersistence()
     }
 
     func reset(_ keyPath: WritableKeyPath<DevelopSettings, Double>) {
         currentSettings[keyPath: keyPath] = DevelopSettings.default[keyPath: keyPath]
-        queuePreviewRender()
+        queuePreviewRender(reason: "resetControl")
         schedulePersistence()
     }
 
@@ -149,7 +158,7 @@ final class EditorSession {
             )
             currentSettings.luminanceNoiseReductionAmount = preservedLumaNoiseReductionAmount
             currentSettings.chrominanceNoiseReductionAmount = preservedChromaNoiseReductionAmount
-            queuePreviewRender()
+            queuePreviewRender(reason: "autoEnhance")
             schedulePersistence()
         } catch {
             lastError = error.localizedDescription
@@ -178,7 +187,7 @@ final class EditorSession {
             case .vibrance:
                 currentSettings.vibrance = value
             }
-            queuePreviewRender()
+            queuePreviewRender(reason: "autoControl")
             schedulePersistence()
         } catch {
             lastError = error.localizedDescription
@@ -191,7 +200,7 @@ final class EditorSession {
             let analysis = try developProcessor.analysis(for: URL(fileURLWithPath: sourcePath))
             currentSettings.lensCorrectionAmount = analysis.lensCorrectionSuggested ? 1 : 0
             currentSettings.vignetteCorrectionAmount = max(currentSettings.vignetteCorrectionAmount, 0.25)
-            queuePreviewRender()
+            queuePreviewRender(reason: "autoOptics")
             schedulePersistence()
         } catch {
             lastError = error.localizedDescription
@@ -202,7 +211,7 @@ final class EditorSession {
     func setCropRect(_ rect: CropRect) {
         currentSettings.cropRect = clampedCropRect(rect)
         if toolMode == .adjust {
-            queuePreviewRender()
+            queuePreviewRender(reason: "cropRect")
         }
         schedulePersistence()
     }
@@ -210,7 +219,7 @@ final class EditorSession {
     func resetCrop() {
         currentSettings.cropRect = .fullFrame
         if toolMode == .adjust {
-            queuePreviewRender()
+            queuePreviewRender(reason: "resetCrop")
         }
         schedulePersistence()
     }
@@ -219,13 +228,13 @@ final class EditorSession {
         guard self.toolMode != toolMode else { return }
         self.toolMode = toolMode
         panOffset = .zero
-        queuePreviewRender(delayMilliseconds: 0)
+        queuePreviewRender(delayMilliseconds: 0, reason: "toolMode")
     }
 
     func setShowOriginal(_ isShowingOriginal: Bool) {
         guard showOriginal != isShowingOriginal else { return }
         showOriginal = isShowingOriginal
-        queuePreviewRender(delayMilliseconds: 0)
+        queuePreviewRender(delayMilliseconds: 0, reason: "showOriginal")
     }
 
     func updateViewportSize(_ viewportSize: CGSize) {
@@ -233,7 +242,7 @@ final class EditorSession {
             return
         }
         self.viewportSize = viewportSize
-        queuePreviewRender(delayMilliseconds: 0)
+        queuePreviewRender(delayMilliseconds: 0, reason: "viewport")
     }
 
     func setFitZoom() {
@@ -336,11 +345,12 @@ final class EditorSession {
         panOffset = clampedPanOffset(proposedPan, in: containerSize, imageExtent: imageExtent, scale: nextScale)
     }
 
-    private func queuePreviewRender(delayMilliseconds: UInt64 = 80) {
+    private func queuePreviewRender(delayMilliseconds: UInt64 = 80, reason: String = "adjustment") {
         let renderID = UUID()
         latestRenderID = renderID
         isRenderingPreview = true
         renderTask?.cancel()
+        let requestStartedAt = DispatchTime.now().uptimeNanoseconds
 
         let sourceURL = URL(fileURLWithPath: sourcePath)
         let settings = displayPreviewSettings()
@@ -354,20 +364,30 @@ final class EditorSession {
                 }
                 if Task.isCancelled { return }
                 let image = try developProcessor.previewImage(from: sourceURL, settings: settings, maxPixelSize: maxPixelSize)
+                let elapsed = AppPerformanceMetrics.format(AppPerformanceMetrics.milliseconds(since: requestStartedAt))
                 await MainActor.run {
                     guard self?.latestRenderID == renderID else { return }
                     self?.displayImage = image
                     self?.isRenderingPreview = false
+                    AppPerformanceMetrics.event(
+                        "editor.preview.render",
+                        details: "reason=\(reason) maxPixel=\(maxPixelSize ?? 0) status=ready elapsed_ms=\(elapsed)"
+                    )
                 }
             } catch is CancellationError {
                 return
             } catch {
+                let elapsed = AppPerformanceMetrics.format(AppPerformanceMetrics.milliseconds(since: requestStartedAt))
                 await MainActor.run {
                     guard self?.latestRenderID == renderID else { return }
                     self?.displayImage = nil
                     self?.isRenderingPreview = false
                     self?.lastError = error.localizedDescription
                     state?.statusMessage = error.localizedDescription
+                    AppPerformanceMetrics.event(
+                        "editor.preview.render",
+                        details: "reason=\(reason) maxPixel=\(maxPixelSize ?? 0) status=failed elapsed_ms=\(elapsed)"
+                    )
                 }
             }
         }
@@ -513,5 +533,11 @@ final class EditorSession {
         let x = min(max(rect.x, 0), 1 - width)
         let y = min(max(rect.y, 0), 1 - height)
         return CropRect(x: x, y: y, width: width, height: height)
+    }
+
+    private static func bootstrapPreviewImage(previewPath: String?) -> CIImage? {
+        guard let previewPath else { return nil }
+        let url = URL(fileURLWithPath: previewPath)
+        return CIImage(contentsOf: url, options: [.applyOrientationProperty: true])
     }
 }

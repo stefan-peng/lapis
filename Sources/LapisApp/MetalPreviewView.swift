@@ -21,10 +21,9 @@ struct MetalPreviewView: NSViewRepresentable {
         let device = MTLCreateSystemDefaultDevice()
         let view = InteractiveMTKView(frame: .zero, device: device)
         view.delegate = context.coordinator
-        view.enableSetNeedsDisplay = false
-        view.isPaused = false
+        view.enableSetNeedsDisplay = true
+        view.isPaused = true
         view.framebufferOnly = false
-        view.preferredFramesPerSecond = 120
         view.clearColor = MTLClearColor(red: 0.08, green: 0.09, blue: 0.11, alpha: 1)
         view.colorPixelFormat = .bgra8Unorm
         view.onScrollZoom = onScrollZoom
@@ -36,6 +35,11 @@ struct MetalPreviewView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: InteractiveMTKView, context: Context) {
+        let needsDisplay = context.coordinator.context !== self.context
+            || context.coordinator.image !== image
+            || context.coordinator.zoomScale != zoomScale
+            || context.coordinator.panOffset != panOffset
+
         context.coordinator.context = self.context
         context.coordinator.image = image
         context.coordinator.zoomScale = zoomScale
@@ -45,6 +49,9 @@ struct MetalPreviewView: NSViewRepresentable {
         nsView.onPanBegan = onPanBegan
         nsView.onPanChanged = onPanChanged
         nsView.onPanEnded = onPanEnded
+        if needsDisplay {
+            nsView.needsDisplay = true
+        }
     }
 
     final class Coordinator: NSObject, MTKViewDelegate {
