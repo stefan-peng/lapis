@@ -73,6 +73,37 @@ import UniformTypeIdentifiers
     #expect(session.panOffset == .zero)
 }
 
+@Test @MainActor func editorScrollZoomUsesPositiveDeltaToZoomIn() throws {
+    let (state, assets) = try makeAppState()
+    let session = EditorSession(state: state, asset: assets[0])
+    let viewport = CGSize(width: 900, height: 700)
+
+    session.updateViewportSize(viewport)
+    let startingScale = session.zoomScale ?? min(viewport.width / session.currentImageExtent.width, viewport.height / session.currentImageExtent.height)
+
+    session.zoomByScroll(deltaY: 6, at: CGPoint(x: viewport.width / 2, y: viewport.height / 2), in: viewport, imageExtent: session.currentImageExtent)
+
+    #expect((session.zoomScale ?? startingScale) > startingScale)
+}
+
+@Test @MainActor func editorZoomDoesNotQueueFreshPreviewRender() async throws {
+    let (state, assets) = try makeAppState()
+    let session = EditorSession(state: state, asset: assets[0])
+    let viewport = CGSize(width: 900, height: 700)
+
+    session.updateViewportSize(viewport)
+
+    for _ in 0..<100 where session.isRenderingPreview {
+        try await Task.sleep(for: .milliseconds(10))
+    }
+
+    #expect(session.isRenderingPreview == false)
+
+    session.stepZoomIn(in: viewport, imageExtent: session.currentImageExtent)
+
+    #expect(session.isRenderingPreview == false)
+}
+
 @Test @MainActor func editorPreviewUsesCropOnlyInAdjustMode() throws {
     let (state, assets) = try makeAppState()
     let session = EditorSession(state: state, asset: assets[0])

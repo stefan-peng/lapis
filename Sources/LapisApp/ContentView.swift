@@ -28,9 +28,9 @@ struct ContentView: View {
             inspectorPane
                 .inspectorColumnWidth(min: 280, ideal: 320, max: 400)
         }
-        .navigationTitle("Lapis")
+        .navigationTitle(navigationTitle)
         .navigationSplitViewStyle(.balanced)
-        .searchable(text: $state.filter.searchText, placement: .sidebar, prompt: "Search Library")
+        .searchable(text: $state.filter.searchText, prompt: "Search Library")
         .toolbar {
             ToolbarItem(placement: .principal) {
                 Picker("Mode", selection: $state.workspaceMode) {
@@ -63,14 +63,16 @@ struct ContentView: View {
                 }
             }
 
-            ToolbarItemGroup(placement: .secondaryAction) {
+            ToolbarItem(placement: .secondaryAction) {
                 Button {
                     state.activateCompareMode()
                 } label: {
                     Label("Compare", systemImage: "rectangle.split.2x1")
                 }
                 .disabled(state.workspaceMode != .library || !state.canCompareSelection)
+            }
 
+            ToolbarItem(placement: .primaryAction) {
                 Button {
                     showsInspector.toggle()
                 } label: {
@@ -98,6 +100,22 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(.bar)
             }
+        }
+    }
+
+    private var navigationTitle: String {
+        switch state.workspaceMode {
+        case .library:
+            if state.libraryDetailMode == .compare {
+                return "Compare"
+            }
+            if let selectedAlbumID = state.selectedAlbumID,
+               let album = state.albums.first(where: { $0.id == selectedAlbumID }) {
+                return album.name
+            }
+            return "Library"
+        case .edit:
+            return "Edit"
         }
     }
 
@@ -141,17 +159,7 @@ struct ContentView: View {
     private var inspectorPane: some View {
         switch state.workspaceMode {
         case .library:
-            if let asset = state.selectedAsset {
-                MetadataSidebarView(state: state, asset: asset)
-            } else if !state.geotaggedAssets.isEmpty {
-                MapBrowserView(state: state)
-            } else {
-                ContentUnavailableView(
-                    "No Photo Selected",
-                    systemImage: "camera.aperture",
-                    description: Text("Select a photo to inspect it, or select two photos and choose Compare.")
-                )
-            }
+            LibraryInspectorView(state: state, asset: state.selectedAsset)
         case .edit:
             if let session = editorSession {
                 EditorInspectorView(session: session)
@@ -189,77 +197,6 @@ struct ContentView: View {
                     Label(album.name, systemImage: "rectangle.stack")
                         .tag(SidebarSelection.album(album.id))
                 }
-
-                HStack(spacing: 8) {
-                    TextField("New Album", text: $state.albumNameDraft)
-                    Button("Add", action: state.createAlbumFromDraft)
-                        .disabled(state.albumNameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
-
-            Section("Filters") {
-                Toggle("Picked Only", isOn: $state.filter.flaggedOnly)
-                Toggle("Geotagged Only", isOn: $state.filter.geotaggedOnly)
-                Stepper(
-                    "Minimum Rating: \(state.filter.minimumRating ?? 0)",
-                    value: Binding(
-                        get: { state.filter.minimumRating ?? 0 },
-                        set: { state.filter.minimumRating = $0 == 0 ? nil : $0 }
-                    ),
-                    in: 0...5
-                )
-            }
-
-            Section("Metadata") {
-                TextField("Keyword", text: Binding(
-                    get: { state.filter.keyword ?? "" },
-                    set: { state.filter.keyword = $0.isEmpty ? nil : $0 }
-                ))
-                TextField("Camera Contains", text: Binding(
-                    get: { state.filter.cameraContains ?? "" },
-                    set: { state.filter.cameraContains = $0.isEmpty ? nil : $0 }
-                ))
-                TextField("Lens Contains", text: Binding(
-                    get: { state.filter.lensContains ?? "" },
-                    set: { state.filter.lensContains = $0.isEmpty ? nil : $0 }
-                ))
-                optionalDateFilter(
-                    title: "Captured After",
-                    value: Binding(
-                        get: { state.filter.capturedAfter },
-                        set: { state.filter.capturedAfter = $0 }
-                    )
-                )
-                optionalDateFilter(
-                    title: "Captured Before",
-                    value: Binding(
-                        get: { state.filter.capturedBefore },
-                        set: { state.filter.capturedBefore = $0 }
-                    )
-                )
-            }
-
-            Section("Export") {
-                Picker("Preset", selection: $state.selectedExportPresetID) {
-                    ForEach(state.exportPresets) { preset in
-                        Text(preset.name).tag(preset.id)
-                    }
-                }
-            }
-
-            Section("Geotagging") {
-                Stepper(
-                    "Timezone Offset: \(state.gpxTimezoneOffsetMinutes) min",
-                    value: $state.gpxTimezoneOffsetMinutes,
-                    in: -720...720,
-                    step: 15
-                )
-                Stepper(
-                    "Camera Offset: \(state.gpxCameraClockOffsetSeconds) sec",
-                    value: $state.gpxCameraClockOffsetSeconds,
-                    in: -43_200...43_200,
-                    step: 30
-                )
             }
         }
         .listStyle(.sidebar)
@@ -290,10 +227,6 @@ struct ContentView: View {
                 .buttonStyle(.plain)
             }
         }
-    }
-
-    private func sidebarRowLabel(_ title: String, systemImage: String, isSelected: Bool) -> some View {
-        Label(title, systemImage: systemImage)
     }
 
     private func reload() {
@@ -412,7 +345,6 @@ private struct MapBrowserView: View {
                     }
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 12))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding()
@@ -428,8 +360,6 @@ private struct AssetThumbnailView: View {
             preview
                 .frame(height: 110)
                 .frame(maxWidth: .infinity)
-                .background(Color(nsColor: .windowBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
             Text(URL(fileURLWithPath: asset.sourcePath).lastPathComponent)
                 .font(.caption)
                 .lineLimit(1)
@@ -505,53 +435,163 @@ private struct AssetPreviewPanel: View {
     }
 }
 
-private struct MetadataSidebarView: View {
+private struct LibraryInspectorView: View {
     @Bindable var state: AppState
-    let asset: Asset
+    let asset: Asset?
 
     var body: some View {
-        List {
-            Section("Metadata") {
-                LabeledContent("Camera", value: [asset.cameraMake, asset.cameraModel].compactMap { $0 }.joined(separator: " "))
-                LabeledContent("Lens", value: asset.lensModel ?? "Unknown")
-                LabeledContent("Size", value: "\(asset.pixelWidth) × \(asset.pixelHeight)")
-                TextField("Keywords", text: Binding(
-                    get: { asset.keywords.joined(separator: ", ") },
-                    set: { state.updateSelectedAssetMetadata(keywords: $0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }) }
-                ))
-                Picker("Flag", selection: Binding(
-                    get: { asset.flag },
-                    set: { state.updateSelectedAssetMetadata(flag: $0) }
-                )) {
-                    ForEach(AssetFlag.allCases, id: \.self) { flag in
-                        Text(flag.rawValue.capitalized).tag(flag)
+        InspectorScrollView {
+            if let asset {
+                InspectorSection("Selection") {
+                    Text(URL(fileURLWithPath: asset.sourcePath).lastPathComponent)
+                        .font(.headline)
+                        .lineLimit(2)
+                    Text("Photo details and adjustments")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                InspectorSection("Metadata") {
+                    LabeledContent("Camera", value: [asset.cameraMake, asset.cameraModel].compactMap { $0 }.joined(separator: " "))
+                    LabeledContent("Lens", value: asset.lensModel ?? "Unknown")
+                    LabeledContent("Size", value: "\(asset.pixelWidth) × \(asset.pixelHeight)")
+                    TextField("Keywords", text: Binding(
+                        get: { asset.keywords.joined(separator: ", ") },
+                        set: { state.updateSelectedAssetMetadata(keywords: $0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }) }
+                    ))
+                    Picker("Flag", selection: Binding(
+                        get: { asset.flag },
+                        set: { state.updateSelectedAssetMetadata(flag: $0) }
+                    )) {
+                        ForEach(AssetFlag.allCases, id: \.self) { flag in
+                            Text(flag.rawValue.capitalized).tag(flag)
+                        }
+                    }
+                    Stepper(
+                        "Rating: \(asset.rating)",
+                        value: Binding(
+                            get: { asset.rating },
+                            set: { state.updateSelectedAssetMetadata(rating: $0) }
+                        ),
+                        in: 0...5
+                    )
+                }
+
+                if let coordinate = asset.gpsCoordinate {
+                    InspectorSection("Map") {
+                        Map(initialPosition: .region(.init(
+                            center: .init(latitude: coordinate.latitude, longitude: coordinate.longitude),
+                            span: .init(latitudeDelta: 0.05, longitudeDelta: 0.05)
+                        ))) {
+                            Marker(URL(fileURLWithPath: asset.sourcePath).lastPathComponent, coordinate: .init(latitude: coordinate.latitude, longitude: coordinate.longitude))
+                        }
+                        .frame(height: 240)
                     }
                 }
+            } else {
+                InspectorSection("Selection") {
+                    Text("No Photo Selected")
+                        .font(.headline)
+                    Text("Select a photo to inspect it, or use the controls below to narrow the library.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            InspectorSection("Filters") {
+                Toggle("Picked Only", isOn: $state.filter.flaggedOnly)
+                Toggle("Geotagged Only", isOn: $state.filter.geotaggedOnly)
                 Stepper(
-                    "Rating: \(asset.rating)",
+                    "Minimum Rating: \(state.filter.minimumRating ?? 0)",
                     value: Binding(
-                        get: { asset.rating },
-                        set: { state.updateSelectedAssetMetadata(rating: $0) }
+                        get: { state.filter.minimumRating ?? 0 },
+                        set: { state.filter.minimumRating = $0 == 0 ? nil : $0 }
                     ),
                     in: 0...5
                 )
+                TextField("Keyword", text: Binding(
+                    get: { state.filter.keyword ?? "" },
+                    set: { state.filter.keyword = $0.isEmpty ? nil : $0 }
+                ))
+                TextField("Camera Contains", text: Binding(
+                    get: { state.filter.cameraContains ?? "" },
+                    set: { state.filter.cameraContains = $0.isEmpty ? nil : $0 }
+                ))
+                TextField("Lens Contains", text: Binding(
+                    get: { state.filter.lensContains ?? "" },
+                    set: { state.filter.lensContains = $0.isEmpty ? nil : $0 }
+                ))
+                optionalDateFilter(
+                    title: "Captured After",
+                    value: Binding(
+                        get: { state.filter.capturedAfter },
+                        set: { state.filter.capturedAfter = $0 }
+                    )
+                )
+                optionalDateFilter(
+                    title: "Captured Before",
+                    value: Binding(
+                        get: { state.filter.capturedBefore },
+                        set: { state.filter.capturedBefore = $0 }
+                    )
+                )
             }
 
-            if let coordinate = asset.gpsCoordinate {
-                Section("Map") {
-                    Map(initialPosition: .region(.init(
-                        center: .init(latitude: coordinate.latitude, longitude: coordinate.longitude),
-                        span: .init(latitudeDelta: 0.05, longitudeDelta: 0.05)
-                    ))) {
-                        Marker(URL(fileURLWithPath: asset.sourcePath).lastPathComponent, coordinate: .init(latitude: coordinate.latitude, longitude: coordinate.longitude))
+            InspectorSection("Albums") {
+                TextField("New Album", text: $state.albumNameDraft)
+                Button("Create Album", action: state.createAlbumFromDraft)
+                    .disabled(state.albumNameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+
+            InspectorSection("Export") {
+                Picker("Preset", selection: $state.selectedExportPresetID) {
+                    ForEach(state.exportPresets) { preset in
+                        Text(preset.name).tag(preset.id)
                     }
-                    .frame(height: 240)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                 }
             }
+
+            InspectorSection("Geotagging") {
+                Stepper(
+                    "Timezone Offset: \(state.gpxTimezoneOffsetMinutes) min",
+                    value: $state.gpxTimezoneOffsetMinutes,
+                    in: -720...720,
+                    step: 15
+                )
+                Stepper(
+                    "Camera Offset: \(state.gpxCameraClockOffsetSeconds) sec",
+                    value: $state.gpxCameraClockOffsetSeconds,
+                    in: -43_200...43_200,
+                    step: 30
+                )
+            }
         }
-        .listStyle(.sidebar)
+    }
+
+    @ViewBuilder
+    private func optionalDateFilter(title: String, value: Binding<Date?>) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let wrappedValue = value.wrappedValue {
+                DatePicker(
+                    title,
+                    selection: Binding(
+                        get: { wrappedValue },
+                        set: { value.wrappedValue = $0 }
+                    ),
+                    displayedComponents: .date
+                )
+                Button("Clear \(title)") {
+                    value.wrappedValue = nil
+                }
+                .buttonStyle(.plain)
+                .font(.caption)
+            } else {
+                Button("Set \(title)") {
+                    value.wrappedValue = .now
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 }
 
@@ -636,7 +676,6 @@ private struct EditorCanvasView: View {
             }
         }
         .padding(18)
-        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private var previewCanvas: some View {
@@ -665,26 +704,27 @@ private struct EditorCanvasView: View {
                     onMagnify: { point, magnification in
                         session.zoomByMagnification(magnification, at: point, in: proxy.size, imageExtent: imageExtent)
                         panGestureStartOffset = session.panOffset
+                    },
+                    onPanBegan: {
+                        guard session.toolMode == .adjust else { return }
+                        panGestureStartOffset = session.panOffset
+                    },
+                    onPanChanged: { translation in
+                        guard session.toolMode == .adjust else { return }
+                        session.pan(
+                            from: panGestureStartOffset,
+                            by: translation,
+                            in: proxy.size,
+                            imageExtent: imageExtent
+                        )
+                    },
+                    onPanEnded: {
+                        guard session.toolMode == .adjust else { return }
+                        panGestureStartOffset = session.panOffset
                     }
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 24))
                 .contentShape(Rectangle())
-                .gesture(
-                    session.toolMode == .adjust
-                    ? DragGesture()
-                        .onChanged { value in
-                            session.pan(
-                                from: panGestureStartOffset,
-                                by: value.translation,
-                                in: proxy.size,
-                                imageExtent: imageExtent
-                            )
-                        }
-                        .onEnded { _ in
-                            panGestureStartOffset = session.panOffset
-                        }
-                    : nil
-                )
 
                 if session.toolMode == .crop, !session.showOriginal {
                     CropOverlayView(
@@ -703,12 +743,6 @@ private struct EditorCanvasView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black.opacity(0.96))
-        .clipShape(RoundedRectangle(cornerRadius: 24))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24)
-                .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
-        )
     }
 }
 
@@ -716,8 +750,8 @@ private struct EditorInspectorView: View {
     @Bindable var session: EditorSession
 
     var body: some View {
-        List {
-            Section {
+        InspectorScrollView {
+            InspectorSection(nil) {
                 Picker("Tool", selection: Binding(
                     get: { session.toolMode },
                     set: { session.setToolMode($0) }
@@ -734,7 +768,6 @@ private struct EditorInspectorView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .listRowBackground(Color.clear)
 
             if session.toolMode == .adjust {
                 adjustInspectorContent
@@ -742,12 +775,11 @@ private struct EditorInspectorView: View {
                 cropInspectorContent
             }
         }
-        .listStyle(.sidebar)
     }
 
     @ViewBuilder
     private var adjustInspectorContent: some View {
-        Section("Light") {
+        InspectorSection("Light") {
             sliderRow("Exposure", value: session.currentSettings.exposure, spec: .exposure, autoControl: .exposure) { newValue in
                 session.update { $0.exposure = newValue }
             } onReset: {
@@ -780,7 +812,7 @@ private struct EditorInspectorView: View {
             }
         }
 
-        Section("Color") {
+        InspectorSection("Color") {
             sliderRow("Temperature", value: session.currentSettings.temperature, spec: .temperature) { newValue in
                 session.update { $0.temperature = newValue }
             } onReset: {
@@ -808,7 +840,7 @@ private struct EditorInspectorView: View {
             }
         }
 
-        Section("Detail") {
+        InspectorSection("Detail") {
             sliderRow("Sharpen", value: session.currentSettings.sharpenAmount, spec: .sharpen) { newValue in
                 session.update { $0.sharpenAmount = newValue }
             } onReset: {
@@ -826,7 +858,7 @@ private struct EditorInspectorView: View {
             }
         }
 
-        Section("Optics") {
+        InspectorSection("Optics") {
             HStack {
                 Text("Auto optics")
                     .font(.caption.weight(.medium))
@@ -852,7 +884,7 @@ private struct EditorInspectorView: View {
 
     @ViewBuilder
     private var cropInspectorContent: some View {
-        Section("Crop") {
+        InspectorSection("Crop") {
             Picker("Aspect Ratio", selection: $session.cropAspectRatio) {
                 ForEach(CropAspectRatioPreset.allCases) { ratio in
                     Text(ratio.label).tag(ratio)
@@ -931,6 +963,67 @@ private struct EditorInspectorView: View {
             case "Straighten": DevelopSettings.default.straightenAngle
             default: 0
             }
+        }
+    }
+}
+
+private struct InspectorScrollView<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                content
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+        }
+        .background(InspectorScrollViewConfigurator())
+    }
+}
+
+private struct InspectorScrollViewConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        NSView(frame: .zero)
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            var currentView: NSView? = nsView
+            while let view = currentView {
+                if let scrollView = view.enclosingScrollView {
+                    scrollView.borderType = .noBorder
+                    scrollView.drawsBackground = false
+                    scrollView.backgroundColor = .clear
+                    break
+                }
+                currentView = view.superview
+            }
+        }
+    }
+}
+
+private struct InspectorSection<Content: View>: View {
+    let title: String?
+    @ViewBuilder let content: Content
+
+    init(_ title: String?, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let title, !title.isEmpty {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                content
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

@@ -9,6 +9,9 @@ struct MetalPreviewView: NSViewRepresentable {
     let panOffset: CGSize
     let onScrollZoom: (CGPoint, CGFloat) -> Void
     let onMagnify: (CGPoint, CGFloat) -> Void
+    let onPanBegan: () -> Void
+    let onPanChanged: (CGSize) -> Void
+    let onPanEnded: () -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(context: context)
@@ -18,13 +21,17 @@ struct MetalPreviewView: NSViewRepresentable {
         let device = MTLCreateSystemDefaultDevice()
         let view = InteractiveMTKView(frame: .zero, device: device)
         view.delegate = context.coordinator
-        view.enableSetNeedsDisplay = true
-        view.isPaused = true
+        view.enableSetNeedsDisplay = false
+        view.isPaused = false
         view.framebufferOnly = false
+        view.preferredFramesPerSecond = 120
         view.clearColor = MTLClearColor(red: 0.08, green: 0.09, blue: 0.11, alpha: 1)
         view.colorPixelFormat = .bgra8Unorm
         view.onScrollZoom = onScrollZoom
         view.onMagnify = onMagnify
+        view.onPanBegan = onPanBegan
+        view.onPanChanged = onPanChanged
+        view.onPanEnded = onPanEnded
         return view
     }
 
@@ -35,7 +42,9 @@ struct MetalPreviewView: NSViewRepresentable {
         context.coordinator.panOffset = panOffset
         nsView.onScrollZoom = onScrollZoom
         nsView.onMagnify = onMagnify
-        nsView.setNeedsDisplay(nsView.bounds)
+        nsView.onPanBegan = onPanBegan
+        nsView.onPanChanged = onPanChanged
+        nsView.onPanEnded = onPanEnded
     }
 
     final class Coordinator: NSObject, MTKViewDelegate {
@@ -104,16 +113,38 @@ struct MetalPreviewView: NSViewRepresentable {
 final class InteractiveMTKView: MTKView {
     var onScrollZoom: ((CGPoint, CGFloat) -> Void)?
     var onMagnify: ((CGPoint, CGFloat) -> Void)?
+    var onPanBegan: (() -> Void)?
+    var onPanChanged: ((CGSize) -> Void)?
+    var onPanEnded: (() -> Void)?
+    private var dragStartPoint: CGPoint?
 
     override var acceptsFirstResponder: Bool { true }
     override var isFlipped: Bool { true }
 
     override func scrollWheel(with event: NSEvent) {
-        onScrollZoom?(convert(event.locationInWindow, from: nil), event.scrollingDeltaY)
+        let deviceAdjustedDeltaY = event.isDirectionInvertedFromDevice ? -event.scrollingDeltaY : event.scrollingDeltaY
+        onScrollZoom?(convert(event.locationInWindow, from: nil), deviceAdjustedDeltaY)
     }
 
     override func magnify(with event: NSEvent) {
         onMagnify?(convert(event.locationInWindow, from: nil), event.magnification)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+        dragStartPoint = convert(event.locationInWindow, from: nil)
+        onPanBegan?()
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let dragStartPoint else { return }
+        let location = convert(event.locationInWindow, from: nil)
+        onPanChanged?(CGSize(width: location.x - dragStartPoint.x, height: dragStartPoint.y - location.y))
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        dragStartPoint = nil
+        onPanEnded?()
     }
 }
 

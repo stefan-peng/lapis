@@ -252,7 +252,6 @@ final class EditorSession {
         } else {
             setFitZoom()
         }
-        queuePreviewRender(delayMilliseconds: 0)
     }
 
     func stepZoomIn(at location: CGPoint? = nil, in containerSize: CGSize, imageExtent: CGRect? = nil) {
@@ -264,7 +263,7 @@ final class EditorSession {
     }
 
     func zoomByScroll(deltaY: CGFloat, at location: CGPoint, in containerSize: CGSize, imageExtent: CGRect) {
-        let factor = pow(1.0015, Double(-deltaY * 10))
+        let factor = pow(1.0015, Double(deltaY * 10))
         zoom(by: factor, at: location, in: containerSize, imageExtent: imageExtent)
     }
 
@@ -314,7 +313,6 @@ final class EditorSession {
         let nextScale = resolvedScale(for: containerSize, imageExtent: imageExtent)
         guard let location else {
             panOffset = clampedPanOffset(panOffset, in: containerSize, imageExtent: imageExtent, scale: nextScale)
-            queuePreviewRender(delayMilliseconds: 0)
             return
         }
 
@@ -336,7 +334,6 @@ final class EditorSession {
             height: location.y - (normalizedY * newDrawSize.height) - centeredOrigin.y
         )
         panOffset = clampedPanOffset(proposedPan, in: containerSize, imageExtent: imageExtent, scale: nextScale)
-        queuePreviewRender(delayMilliseconds: 0)
     }
 
     private func queuePreviewRender(delayMilliseconds: UInt64 = 80) {
