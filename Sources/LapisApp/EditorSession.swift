@@ -4,6 +4,55 @@ import LapisCore
 import Observation
 import SwiftUI
 
+enum CropAspectRatioPreset: String, CaseIterable, Identifiable {
+    case freeform
+    case square
+    case portrait
+    case landscape
+    case widescreen
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .freeform: "Freeform"
+        case .square: "1:1"
+        case .portrait: "4:5"
+        case .landscape: "3:2"
+        case .widescreen: "16:9"
+        }
+    }
+
+    var size: CGSize? {
+        switch self {
+        case .freeform: nil
+        case .square: CGSize(width: 1, height: 1)
+        case .portrait: CGSize(width: 4, height: 5)
+        case .landscape: CGSize(width: 3, height: 2)
+        case .widescreen: CGSize(width: 16, height: 9)
+        }
+    }
+
+    func adjustedRect(from rect: CropRect) -> CropRect {
+        guard let size else { return rect }
+        let ratio = size.width / size.height
+        let centerX = rect.x + (rect.width / 2)
+        let centerY = rect.y + (rect.height / 2)
+        var width = min(rect.width, 1)
+        var height = width / ratio
+        if height > 1 {
+            height = 1
+            width = height * ratio
+        }
+        return CropRect(
+            x: min(max(centerX - (width / 2), 0), 1 - width),
+            y: min(max(centerY - (height / 2), 0), 1 - height),
+            width: width,
+            height: height
+        )
+    }
+}
+
 @MainActor
 @Observable
 final class EditorSession {
@@ -26,6 +75,7 @@ final class EditorSession {
     var currentSettings: DevelopSettings
     var showOriginal = false
     var toolMode: ToolMode = .adjust
+    var cropAspectRatio: CropAspectRatioPreset = .freeform
     var zoomScale: Double?
     var panOffset: CGSize = .zero
     var viewportSize: CGSize = .zero
@@ -48,8 +98,14 @@ final class EditorSession {
         sourcePixelSize = CGSize(width: max(asset.pixelWidth, 1), height: max(asset.pixelHeight, 1))
         assetEditor = state.environment.assetEditor
         committedSettings = asset.developSettings
-        currentSettings = asset.developSettings
+        self.currentSettings = asset.developSettings
         queuePreviewRender(delayMilliseconds: 0)
+    }
+
+    func flushPendingEdits() {
+        saveTask?.cancel()
+        renderTask?.cancel()
+        persist(settings: currentSettings, saveID: beginPersistence())
     }
 
     var isFitZoom: Bool {
@@ -242,11 +298,6 @@ final class EditorSession {
             previewSettings.cropRect = .fullFrame
         }
         return previewSettings
-    }
-
-    func flushPendingEdits() {
-        saveTask?.cancel()
-        persist(settings: currentSettings, saveID: beginPersistence())
     }
 
     var currentImageExtent: CGRect {

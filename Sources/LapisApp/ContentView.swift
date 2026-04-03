@@ -6,23 +6,27 @@ import MapKit
 import SwiftUI
 
 struct ContentView: View {
+    private enum SidebarSelection: Hashable {
+        case allPhotos
+        case album(UUID)
+    }
+
     @Bindable var state: AppState
     @State private var showsInspector = true
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
+    @State private var editorSession: EditorSession?
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
                 .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 300)
         } detail: {
-            contentPane
+            mainContentPane
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .inspector(isPresented: inspectorPresented) {
-            if let asset = state.selectedAsset, state.workspaceMode == .library {
-                MetadataSidebarView(state: state, asset: asset)
-                    .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
-            }
+        .inspector(isPresented: $showsInspector) {
+            inspectorPane
+                .inspectorColumnWidth(min: 280, ideal: 320, max: 400)
         }
         .navigationTitle("Lapis")
         .navigationSplitViewStyle(.balanced)
@@ -44,7 +48,6 @@ struct ContentView: View {
                 } label: {
                     Label("Import", systemImage: "square.and.arrow.down")
                 }
-                .labelStyle(.titleAndIcon)
                 .help("Import a folder of photos")
                 .keyboardShortcut("i", modifiers: [.command, .shift])
 
@@ -58,7 +61,6 @@ struct ContentView: View {
                 } label: {
                     Label("Actions", systemImage: "ellipsis.circle")
                 }
-                .labelStyle(.titleAndIcon)
             }
 
             ToolbarItemGroup(placement: .secondaryAction) {
@@ -67,20 +69,19 @@ struct ContentView: View {
                 } label: {
                     Label("Compare", systemImage: "rectangle.split.2x1")
                 }
-                .labelStyle(.titleAndIcon)
                 .disabled(state.workspaceMode != .library || !state.canCompareSelection)
 
                 Button {
                     showsInspector.toggle()
                 } label: {
-                    Label(showsInspector ? "Hide Info" : "Show Info", systemImage: "info.circle")
+                    Label("Show Info", systemImage: "sidebar.right")
                 }
-                .labelStyle(.titleAndIcon)
                 .keyboardShortcut("i", modifiers: [.command])
-                .disabled(state.workspaceMode != .library || state.selectedAsset == nil)
             }
         }
-        .onChange(of: state.filter.searchText) { _, _ in reload() }
+        .onChange(of: state.workspaceMode) { _, _ in syncEditorSession() }
+        .onChange(of: state.selectedAsset?.id) { _, _ in syncEditorSession() }
+        .onAppear { syncEditorSession() }
         .safeAreaInset(edge: .bottom) {
             if !state.statusMessage.isEmpty {
                 LabeledContent {
@@ -100,38 +101,93 @@ struct ContentView: View {
         }
     }
 
-    private var inspectorPresented: Binding<Bool> {
+    private func syncEditorSession() {
+        if state.workspaceMode == .edit, let asset = state.selectedAsset {
+            if editorSession?.assetID != asset.id {
+                editorSession?.flushPendingEdits()
+                editorSession = EditorSession(state: state, asset: asset)
+            }
+        } else {
+            if editorSession != nil {
+                editorSession?.flushPendingEdits()
+                editorSession = nil
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var mainContentPane: some View {
+        switch state.workspaceMode {
+        case .library:
+            if state.libraryDetailMode == .compare {
+                CompareView(state: state)
+            } else {
+                LibraryGridView(state: state)
+            }
+        case .edit:
+            if let session = editorSession {
+                EditorCanvasView(session: session)
+            } else {
+                ContentUnavailableView(
+                    "Select One Photo",
+                    systemImage: "slider.horizontal.3",
+                    description: Text("Choose a single photo in Library, then enter Edit mode.")
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var inspectorPane: some View {
+        switch state.workspaceMode {
+        case .library:
+            if let asset = state.selectedAsset {
+                MetadataSidebarView(state: state, asset: asset)
+            } else if !state.geotaggedAssets.isEmpty {
+                MapBrowserView(state: state)
+            } else {
+                ContentUnavailableView(
+                    "No Photo Selected",
+                    systemImage: "camera.aperture",
+                    description: Text("Select a photo to inspect it, or select two photos and choose Compare.")
+                )
+            }
+        case .edit:
+            if let session = editorSession {
+                EditorInspectorView(session: session)
+            }
+        }
+    }
+
+    private var sidebarSelection: Binding<SidebarSelection> {
         Binding(
-            get: { state.workspaceMode == .library && showsInspector && state.selectedAsset != nil },
-            set: { showsInspector = $0 }
+            get: {
+                if let selectedAlbumID = state.selectedAlbumID {
+                    .album(selectedAlbumID)
+                } else {
+                    .allPhotos
+                }
+            },
+            set: { selection in
+                switch selection {
+                case .allPhotos:
+                    state.selectAlbum(nil)
+                case .album(let albumID):
+                    state.selectAlbum(albumID)
+                }
+            }
         )
     }
 
     private var sidebar: some View {
-        List {
+        List(selection: sidebarSelection) {
             Section("Library") {
-                Button {
-                    state.selectAlbum(nil)
-                } label: {
-                    sidebarRowLabel(
-                        "All Photos",
-                        systemImage: "photo.on.rectangle.angled",
-                        isSelected: state.selectedAlbumID == nil
-                    )
-                }
-                .buttonStyle(.plain)
+                Label("All Photos", systemImage: "photo.on.rectangle.angled")
+                    .tag(SidebarSelection.allPhotos)
 
                 ForEach(state.albums) { album in
-                    Button {
-                        state.selectAlbum(album.id)
-                    } label: {
-                        sidebarRowLabel(
-                            album.name,
-                            systemImage: "rectangle.stack",
-                            isSelected: state.selectedAlbumID == album.id
-                        )
-                    }
-                    .buttonStyle(.plain)
+                    Label(album.name, systemImage: "rectangle.stack")
+                        .tag(SidebarSelection.album(album.id))
                 }
 
                 HStack(spacing: 8) {
@@ -207,133 +263,7 @@ struct ContentView: View {
             }
         }
         .listStyle(.sidebar)
-        .frame(minWidth: 200)
-        .onChange(of: state.filter.keyword) { _, _ in reload() }
-        .onChange(of: state.filter.flaggedOnly) { _, _ in reload() }
-        .onChange(of: state.filter.geotaggedOnly) { _, _ in reload() }
-        .onChange(of: state.filter.minimumRating) { _, _ in reload() }
-        .onChange(of: state.filter.cameraContains) { _, _ in reload() }
-        .onChange(of: state.filter.lensContains) { _, _ in reload() }
-        .onChange(of: state.filter.capturedAfter) { _, _ in reload() }
-        .onChange(of: state.filter.capturedBefore) { _, _ in reload() }
-    }
-
-    @ViewBuilder
-    private var contentPane: some View {
-        switch state.workspaceMode {
-        case .library:
-            libraryPane
-        case .edit:
-            editPane
-        }
-    }
-
-    private var libraryPane: some View {
-        HSplitView {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("\(state.assets.count) photos")
-                        .font(.headline)
-                    Spacer()
-                    if state.selectedAssetIDs.count == 2 && state.libraryDetailMode != .compare {
-                        Text("Choose Compare to inspect both photos.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.horizontal)
-
-                ScrollView {
-                    ZStack(alignment: .topLeading) {
-                        Color.clear
-                            .contentShape(Rectangle())
-                            .frame(maxWidth: .infinity, minHeight: 1)
-                            .onTapGesture {
-                                state.clearSelection()
-                            }
-
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 12) {
-                            ForEach(state.assets) { asset in
-                                AssetThumbnailView(asset: asset, isSelected: state.selectedAssetIDs.contains(asset.id))
-                                    .contentShape(RoundedRectangle(cornerRadius: 12))
-                                    .onTapGesture {
-                                        state.handleLibrarySelection(assetID: asset.id, modifiers: currentEventModifiers())
-                                    }
-                                    .onTapGesture(count: 2) {
-                                        state.selectSingleAsset(asset.id)
-                                        state.openSelectedAssetForEditing()
-                                    }
-                                    .contextMenu {
-                                        ForEach(state.albums) { album in
-                                            Button("Add to \(album.name)") {
-                                                state.selectSingleAsset(asset.id)
-                                                state.addSelectionToAlbum(album)
-                                            }
-                                        }
-                                    }
-                            }
-                        }
-                        .padding(.horizontal)
-                        .padding(.bottom)
-                    }
-                }
-                .background(
-                    Button("", action: state.openSelectedAssetForEditing)
-                        .keyboardShortcut(.return, modifiers: [])
-                        .opacity(0)
-                        .frame(width: 0, height: 0)
-                )
-            }
-            .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
-
-            if shouldShowLibrarySupplementPane {
-                librarySupplementPane
-                    .frame(minWidth: 240, idealWidth: 300, maxWidth: 420, maxHeight: .infinity)
-            }
-        }
-    }
-
-    private var shouldShowLibrarySupplementPane: Bool {
-        state.libraryDetailMode == .compare || state.selectedAsset == nil
-    }
-
-    @ViewBuilder
-    private var librarySupplementPane: some View {
-        if state.libraryDetailMode == .compare, state.compareAssets.count == 2 {
-            HStack(spacing: 16) {
-                ForEach(state.compareAssets) { asset in
-                    AssetPreviewPanel(asset: asset)
-                }
-            }
-            .padding()
-        } else if state.selectedAssetIDs.count == 2 {
-            ContentUnavailableView(
-                "Compare Ready",
-                systemImage: "rectangle.split.2x1",
-                description: Text("Use Compare in the toolbar to inspect the two selected photos side by side.")
-            )
-        } else if !state.geotaggedAssets.isEmpty {
-            MapBrowserView(state: state)
-        } else {
-            ContentUnavailableView(
-                "No Photo Selected",
-                systemImage: "camera.aperture",
-                description: Text("Select a photo to inspect it, or select two photos and choose Compare.")
-            )
-        }
-    }
-
-    @ViewBuilder
-    private var editPane: some View {
-        if let asset = state.selectedAsset {
-            EditorWorkspaceView(state: state, asset: asset)
-        } else {
-            ContentUnavailableView(
-                "Select One Photo",
-                systemImage: "slider.horizontal.3",
-                description: Text("Choose a single photo in Library, then enter Edit mode.")
-            )
-        }
+        .onChange(of: state.filter) { _, _ in reload() }
     }
 
     @ViewBuilder
@@ -363,15 +293,7 @@ struct ContentView: View {
     }
 
     private func sidebarRowLabel(_ title: String, systemImage: String, isSelected: Bool) -> some View {
-        HStack(spacing: 10) {
-            Label(title, systemImage: systemImage)
-            Spacer()
-            if isSelected {
-                Image(systemName: "checkmark")
-                    .foregroundStyle(.tint)
-            }
-        }
-        .contentShape(Rectangle())
+        Label(title, systemImage: systemImage)
     }
 
     private func reload() {
@@ -381,9 +303,81 @@ struct ContentView: View {
             state.statusMessage = error.localizedDescription
         }
     }
+}
 
-    private func currentEventModifiers() -> NSEvent.ModifierFlags {
-        NSApp.currentEvent?.modifierFlags ?? []
+private struct LibraryGridView: View {
+    @Bindable var state: AppState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("\(state.assets.count) photos")
+                    .font(.headline)
+                Spacer()
+                if state.selectedAssetIDs.count == 2 && state.libraryDetailMode != .compare {
+                    Text("Choose Compare to inspect both photos.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal)
+
+            ScrollView {
+                ZStack(alignment: .topLeading) {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .frame(maxWidth: .infinity, minHeight: 1)
+                        .onTapGesture {
+                            state.clearSelection()
+                        }
+
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 12) {
+                        ForEach(state.assets) { asset in
+                            AssetThumbnailView(asset: asset, isSelected: state.selectedAssetIDs.contains(asset.id))
+                                .contentShape(RoundedRectangle(cornerRadius: 12))
+                                .onTapGesture {
+                                    state.handleLibrarySelection(assetID: asset.id, modifiers: NSApp.currentEvent?.modifierFlags ?? [])
+                                }
+                                .onTapGesture(count: 2) {
+                                    state.selectSingleAsset(asset.id)
+                                    state.openSelectedAssetForEditing()
+                                }
+                                .contextMenu {
+                                    ForEach(state.albums) { album in
+                                        Button("Add to \(album.name)") {
+                                            state.selectSingleAsset(asset.id)
+                                            state.addSelectionToAlbum(album)
+                                        }
+                                    }
+                                }
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom)
+                }
+            }
+            .background(
+                Button("", action: state.openSelectedAssetForEditing)
+                    .keyboardShortcut(.return, modifiers: [])
+                    .opacity(0)
+                    .frame(width: 0, height: 0)
+            )
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct CompareView: View {
+    let state: AppState
+
+    var body: some View {
+        HStack(spacing: 16) {
+            ForEach(state.compareAssets) { asset in
+                AssetPreviewPanel(asset: asset)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -418,6 +412,7 @@ private struct MapBrowserView: View {
                     }
                 }
             }
+            .clipShape(RoundedRectangle(cornerRadius: 12))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding()
@@ -515,91 +510,60 @@ private struct MetadataSidebarView: View {
     let asset: Asset
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                GroupBox("Metadata") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        LabeledContent("Camera", value: [asset.cameraMake, asset.cameraModel].compactMap { $0 }.joined(separator: " "))
-                        LabeledContent("Lens", value: asset.lensModel ?? "Unknown")
-                        LabeledContent("Size", value: "\(asset.pixelWidth) × \(asset.pixelHeight)")
-                        TextField("Keywords", text: Binding(
-                            get: { asset.keywords.joined(separator: ", ") },
-                            set: { state.updateSelectedAssetMetadata(keywords: $0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }) }
-                        ))
-                        Picker("Flag", selection: Binding(
-                            get: { asset.flag },
-                            set: { state.updateSelectedAssetMetadata(flag: $0) }
-                        )) {
-                            ForEach(AssetFlag.allCases, id: \.self) { flag in
-                                Text(flag.rawValue.capitalized).tag(flag)
-                            }
-                        }
-                        Stepper(
-                            "Rating: \(asset.rating)",
-                            value: Binding(
-                                get: { asset.rating },
-                                set: { state.updateSelectedAssetMetadata(rating: $0) }
-                            ),
-                            in: 0...5
-                        )
+        List {
+            Section("Metadata") {
+                LabeledContent("Camera", value: [asset.cameraMake, asset.cameraModel].compactMap { $0 }.joined(separator: " "))
+                LabeledContent("Lens", value: asset.lensModel ?? "Unknown")
+                LabeledContent("Size", value: "\(asset.pixelWidth) × \(asset.pixelHeight)")
+                TextField("Keywords", text: Binding(
+                    get: { asset.keywords.joined(separator: ", ") },
+                    set: { state.updateSelectedAssetMetadata(keywords: $0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }) }
+                ))
+                Picker("Flag", selection: Binding(
+                    get: { asset.flag },
+                    set: { state.updateSelectedAssetMetadata(flag: $0) }
+                )) {
+                    ForEach(AssetFlag.allCases, id: \.self) { flag in
+                        Text(flag.rawValue.capitalized).tag(flag)
                     }
                 }
+                Stepper(
+                    "Rating: \(asset.rating)",
+                    value: Binding(
+                        get: { asset.rating },
+                        set: { state.updateSelectedAssetMetadata(rating: $0) }
+                    ),
+                    in: 0...5
+                )
+            }
 
-                if let coordinate = asset.gpsCoordinate {
-                    GroupBox("Map") {
-                        Map(initialPosition: .region(.init(
-                            center: .init(latitude: coordinate.latitude, longitude: coordinate.longitude),
-                            span: .init(latitudeDelta: 0.05, longitudeDelta: 0.05)
-                        ))) {
-                            Marker(URL(fileURLWithPath: asset.sourcePath).lastPathComponent, coordinate: .init(latitude: coordinate.latitude, longitude: coordinate.longitude))
-                        }
-                        .frame(height: 240)
+            if let coordinate = asset.gpsCoordinate {
+                Section("Map") {
+                    Map(initialPosition: .region(.init(
+                        center: .init(latitude: coordinate.latitude, longitude: coordinate.longitude),
+                        span: .init(latitudeDelta: 0.05, longitudeDelta: 0.05)
+                    ))) {
+                        Marker(URL(fileURLWithPath: asset.sourcePath).lastPathComponent, coordinate: .init(latitude: coordinate.latitude, longitude: coordinate.longitude))
                     }
+                    .frame(height: 240)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                 }
             }
-            .padding()
         }
-        .background(.regularMaterial)
+        .listStyle(.sidebar)
     }
 }
 
-private struct EditorWorkspaceView: View {
-    @Bindable var state: AppState
-    let asset: Asset
-    @State private var session: EditorSession
-    @State private var cropAspectRatio = CropAspectRatioPreset.freeform
+private struct EditorCanvasView: View {
+    @Bindable var session: EditorSession
     @State private var panGestureStartOffset: CGSize = .zero
 
-    init(state: AppState, asset: Asset) {
-        self._state = Bindable(state)
-        self.asset = asset
-        _session = State(initialValue: EditorSession(state: state, asset: asset))
-    }
-
     var body: some View {
-        HSplitView {
-            previewColumn
-                .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
-            inspectorColumn
-                .frame(minWidth: 260, idealWidth: 300, maxWidth: 380, maxHeight: .infinity)
-        }
-        .background(Color(nsColor: .windowBackgroundColor))
-        .onChange(of: asset.id) { _, _ in
-            session.flushPendingEdits()
-            session = EditorSession(state: state, asset: asset)
-            cropAspectRatio = .freeform
-            panGestureStartOffset = .zero
-        }
-        .onDisappear {
-            session.flushPendingEdits()
-        }
-    }
-
-    private var previewColumn: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(URL(fileURLWithPath: asset.sourcePath).lastPathComponent)
+                    Text(URL(fileURLWithPath: session.sourcePath).lastPathComponent)
                         .font(.title3.weight(.semibold))
                     Text(session.toolMode == .adjust ? "Adjust" : "Crop")
                         .font(.caption)
@@ -672,6 +636,7 @@ private struct EditorWorkspaceView: View {
             }
         }
         .padding(18)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private var previewCanvas: some View {
@@ -725,7 +690,7 @@ private struct EditorWorkspaceView: View {
                     CropOverlayView(
                         cropRect: session.currentSettings.cropRect,
                         imageFrame: imageFrame,
-                        aspectRatio: cropAspectRatio,
+                        aspectRatio: session.cropAspectRatio,
                         onChange: { session.setCropRect($0) }
                     )
                 }
@@ -745,10 +710,14 @@ private struct EditorWorkspaceView: View {
                 .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
         )
     }
+}
 
-    private var inspectorColumn: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .top, spacing: 12) {
+private struct EditorInspectorView: View {
+    @Bindable var session: EditorSession
+
+    var body: some View {
+        List {
+            Section {
                 Picker("Tool", selection: Binding(
                     get: { session.toolMode },
                     set: { session.setToolMode($0) }
@@ -758,44 +727,27 @@ private struct EditorWorkspaceView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(maxWidth: 180)
 
-                Spacer()
                 if session.toolMode == .crop {
                     Text("Crops are applied after you leave Crop mode.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.trailing)
                 }
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 18)
-            .padding(.bottom, 14)
+            .listRowBackground(Color.clear)
 
-            Divider()
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    if session.toolMode == .adjust {
-                        adjustInspectorContent
-                    } else {
-                        cropInspectorContent
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 18)
-                .padding(.leading, 18)
-                .padding(.bottom, 18)
-                .padding(.trailing, 18)
+            if session.toolMode == .adjust {
+                adjustInspectorContent
+            } else {
+                cropInspectorContent
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Color(nsColor: .controlBackgroundColor))
+        .listStyle(.sidebar)
     }
 
     @ViewBuilder
     private var adjustInspectorContent: some View {
-        EditorInspectorSection(title: "Light") {
+        Section("Light") {
             sliderRow("Exposure", value: session.currentSettings.exposure, spec: .exposure, autoControl: .exposure) { newValue in
                 session.update { $0.exposure = newValue }
             } onReset: {
@@ -828,7 +780,7 @@ private struct EditorWorkspaceView: View {
             }
         }
 
-        EditorInspectorSection(title: "Color") {
+        Section("Color") {
             sliderRow("Temperature", value: session.currentSettings.temperature, spec: .temperature) { newValue in
                 session.update { $0.temperature = newValue }
             } onReset: {
@@ -856,7 +808,7 @@ private struct EditorWorkspaceView: View {
             }
         }
 
-        EditorInspectorSection(title: "Detail") {
+        Section("Detail") {
             sliderRow("Sharpen", value: session.currentSettings.sharpenAmount, spec: .sharpen) { newValue in
                 session.update { $0.sharpenAmount = newValue }
             } onReset: {
@@ -874,7 +826,7 @@ private struct EditorWorkspaceView: View {
             }
         }
 
-        EditorInspectorSection(title: "Optics") {
+        Section("Optics") {
             HStack {
                 Text("Auto optics")
                     .font(.caption.weight(.medium))
@@ -900,14 +852,14 @@ private struct EditorWorkspaceView: View {
 
     @ViewBuilder
     private var cropInspectorContent: some View {
-        EditorInspectorSection(title: "Crop") {
-            Picker("Aspect Ratio", selection: $cropAspectRatio) {
+        Section("Crop") {
+            Picker("Aspect Ratio", selection: $session.cropAspectRatio) {
                 ForEach(CropAspectRatioPreset.allCases) { ratio in
                     Text(ratio.label).tag(ratio)
                 }
             }
             .pickerStyle(.menu)
-            .onChange(of: cropAspectRatio) { _, newValue in
+            .onChange(of: session.cropAspectRatio) { _, newValue in
                 session.setCropRect(newValue.adjustedRect(from: session.currentSettings.cropRect))
             }
 
@@ -923,7 +875,7 @@ private struct EditorWorkspaceView: View {
 
             HStack {
                 Button("Reset Crop") {
-                    cropAspectRatio = .freeform
+                    session.cropAspectRatio = .freeform
                     session.resetCrop()
                 }
                 Spacer()
@@ -980,24 +932,6 @@ private struct EditorWorkspaceView: View {
             default: 0
             }
         }
-    }
-}
-
-private struct EditorInspectorSection<Content: View>: View {
-    let title: String
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 12) {
-                content
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        label: {
-            Text(title)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -1093,55 +1027,6 @@ private struct EditorSliderRow: View {
                 .labelsHidden()
             }
         }
-    }
-}
-
-private enum CropAspectRatioPreset: String, CaseIterable, Identifiable {
-    case freeform
-    case square
-    case portrait
-    case landscape
-    case widescreen
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .freeform: "Freeform"
-        case .square: "1:1"
-        case .portrait: "4:5"
-        case .landscape: "3:2"
-        case .widescreen: "16:9"
-        }
-    }
-
-    var size: CGSize? {
-        switch self {
-        case .freeform: nil
-        case .square: CGSize(width: 1, height: 1)
-        case .portrait: CGSize(width: 4, height: 5)
-        case .landscape: CGSize(width: 3, height: 2)
-        case .widescreen: CGSize(width: 16, height: 9)
-        }
-    }
-
-    func adjustedRect(from rect: CropRect) -> CropRect {
-        guard let size else { return rect }
-        let ratio = size.width / size.height
-        let centerX = rect.x + (rect.width / 2)
-        let centerY = rect.y + (rect.height / 2)
-        var width = min(rect.width, 1)
-        var height = width / ratio
-        if height > 1 {
-            height = 1
-            width = height * ratio
-        }
-        return CropRect(
-            x: min(max(centerX - (width / 2), 0), 1 - width),
-            y: min(max(centerY - (height / 2), 0), 1 - height),
-            width: width,
-            height: height
-        )
     }
 }
 

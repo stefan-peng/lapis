@@ -332,7 +332,7 @@ public struct Album: Identifiable, Codable, Hashable, Sendable {
     }
 }
 
-public struct AssetFilter: Sendable {
+public struct AssetFilter: Equatable, Sendable {
     public var searchText: String
     public var minimumRating: Int?
     public var flaggedOnly: Bool
