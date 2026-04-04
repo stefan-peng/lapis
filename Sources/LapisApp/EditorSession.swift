@@ -56,6 +56,11 @@ enum CropAspectRatioPreset: String, CaseIterable, Identifiable {
 @MainActor
 @Observable
 final class EditorSession {
+    private struct PreviewRenderSignature: Equatable {
+        let settings: DevelopSettings
+        let maxPixelSize: Int?
+    }
+
     enum ToolMode: String, CaseIterable, Identifiable {
         case adjust
         case crop
@@ -88,6 +93,7 @@ final class EditorSession {
     private var renderTask: Task<Void, Never>?
     private var latestSaveID = UUID()
     private var latestRenderID = UUID()
+    private var lastRenderedPreviewSignature: PreviewRenderSignature?
 
     init(state: AppState, asset: Asset) {
         self.state = state
@@ -242,6 +248,16 @@ final class EditorSession {
             return
         }
         self.viewportSize = viewportSize
+
+        let previewSettings = displayPreviewSettings()
+        let previewSignature = PreviewRenderSignature(
+            settings: previewSettings,
+            maxPixelSize: requestedPreviewPixelSize(for: previewSettings)
+        )
+        if displayImage != nil, previewSignature == lastRenderedPreviewSignature {
+            return
+        }
+
         queuePreviewRender(delayMilliseconds: 0, reason: "viewport")
     }
 
@@ -355,6 +371,7 @@ final class EditorSession {
         let sourceURL = URL(fileURLWithPath: sourcePath)
         let settings = displayPreviewSettings()
         let maxPixelSize = requestedPreviewPixelSize(for: settings)
+        let previewSignature = PreviewRenderSignature(settings: settings, maxPixelSize: maxPixelSize)
         let developProcessor = self.developProcessor
 
         renderTask = Task.detached(priority: .userInitiated) { [developProcessor, weak self, weak state] in
@@ -368,6 +385,7 @@ final class EditorSession {
                 await MainActor.run {
                     guard self?.latestRenderID == renderID else { return }
                     self?.displayImage = image
+                    self?.lastRenderedPreviewSignature = previewSignature
                     self?.isRenderingPreview = false
                     AppPerformanceMetrics.event(
                         "editor.preview.render",
@@ -381,6 +399,7 @@ final class EditorSession {
                 await MainActor.run {
                     guard self?.latestRenderID == renderID else { return }
                     self?.displayImage = nil
+                    self?.lastRenderedPreviewSignature = nil
                     self?.isRenderingPreview = false
                     self?.lastError = error.localizedDescription
                     state?.statusMessage = error.localizedDescription

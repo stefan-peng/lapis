@@ -154,7 +154,25 @@ import UniformTypeIdentifiers
     #expect(renderSpy.previewRenderCount == 1)
 
     session.updateViewportSize(CGSize(width: 902, height: 700))
-    try await waitUntil("significant viewport render") { renderSpy.previewRenderCount == 2 && session.isRenderingPreview == false }
+    try await Task.sleep(for: .milliseconds(150))
+    #expect(renderSpy.previewRenderCount == 1)
+}
+
+@Test @MainActor func editorViewportResizeSkipsRerenderWhenPreviewResolutionIsUnchanged() async throws {
+    let renderSpy = PreviewRenderSpy()
+    let processor = MockDevelopProcessor(renderSpy: renderSpy)
+    let (state, assets) = try makeAppState(developProcessor: processor)
+    let session = EditorSession(state: state, asset: assets[0])
+
+    session.updateViewportSize(CGSize(width: 900, height: 700))
+    try await waitUntil("initial viewport render") { renderSpy.previewRenderCount == 1 && session.isRenderingPreview == false }
+
+    session.updateViewportSize(CGSize(width: 960, height: 740))
+    try await Task.sleep(for: .milliseconds(150))
+    #expect(renderSpy.previewRenderCount == 1)
+
+    session.updateViewportSize(CGSize(width: 1200, height: 740))
+    try await waitUntil("higher resolution viewport render") { renderSpy.previewRenderCount == 2 && session.isRenderingPreview == false }
 }
 
 @Test @MainActor func editorFlushPendingEditsPersistsLatestSettingsBeforeSessionTeardown() async throws {
