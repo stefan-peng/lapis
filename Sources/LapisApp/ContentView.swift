@@ -27,10 +27,10 @@ struct ContentView: View {
         .inspector(isPresented: $showsInspector) {
             inspectorPane
                 .controlSize(.small)
-                .inspectorColumnWidth(min: 280, ideal: 320, max: 400)
+                .inspectorColumnWidth(min: 280, ideal: 300, max: 380)
         }
         .navigationTitle(navigationTitle)
-        .navigationSplitViewStyle(.balanced)
+        .navigationSplitViewStyle(.automatic)
         .searchable(text: $state.filter.searchText, prompt: "Search Library")
         .toolbar {
             ToolbarItem(placement: .principal) {
