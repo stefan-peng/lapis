@@ -68,10 +68,23 @@ struct LapisAppMain: App {
 
                 Divider()
 
-                Button("Compare Selection") {
-                    appState?.activateCompareMode()
+                Button(appState?.libraryDetailMode == .compare ? "Done Comparing" : "Compare Selection") {
+                    guard let appState else { return }
+                    if appState.libraryDetailMode == .compare {
+                        appState.exitCompareMode()
+                    } else {
+                        appState.activateCompareMode()
+                    }
                 }
-                .disabled(!(appState?.workspaceMode == .library && appState?.canCompareSelection == true))
+                .disabled(
+                    !(
+                        appState?.workspaceMode == .library &&
+                        (
+                            appState?.libraryDetailMode == .compare ||
+                            appState?.canCompareSelection == true
+                        )
+                    )
+                )
             }
 
             SidebarCommands()

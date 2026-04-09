@@ -62,11 +62,22 @@ struct ContentView: View {
 
             ToolbarItem(placement: .secondaryAction) {
                 Button {
-                    state.activateCompareMode()
+                    if state.libraryDetailMode == .compare {
+                        state.exitCompareMode()
+                    } else {
+                        state.activateCompareMode()
+                    }
                 } label: {
-                    Label("Compare", systemImage: "rectangle.split.2x1")
+                    if state.libraryDetailMode == .compare {
+                        Label("Done Comparing", systemImage: "xmark.rectangle")
+                    } else {
+                        Label("Compare", systemImage: "rectangle.split.2x1")
+                    }
                 }
-                .disabled(state.workspaceMode != .library || !state.canCompareSelection)
+                .disabled(
+                    state.workspaceMode != .library ||
+                    (state.libraryDetailMode != .compare && !state.canCompareSelection)
+                )
             }
 
             ToolbarItem(placement: .primaryAction) {
