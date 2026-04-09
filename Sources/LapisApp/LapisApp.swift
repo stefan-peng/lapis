@@ -11,7 +11,7 @@ struct LapisAppMain: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        Window("Lapis", id: "main") {
             Group {
                 if let appState {
                     ContentView(state: appState)
