@@ -41,6 +41,39 @@ struct LapisAppMain: App {
         .windowResizability(.contentMinSize)
         .windowToolbarStyle(.unified(showsTitle: true))
         .commands {
+            CommandMenu("Library") {
+                Button("Import Folder") {
+                    appState?.importFolders()
+                }
+                .keyboardShortcut("i", modifiers: [.command, .shift])
+                .disabled(appState == nil)
+
+                Button("Apply GPX") {
+                    appState?.importGPX()
+                }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
+                .disabled(appState == nil)
+
+                Button("Export Selection") {
+                    appState?.exportSelection()
+                }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+                .disabled(appState?.selectedAssetIDs.isEmpty ?? true)
+
+                Button("Write XMP Sidecar") {
+                    appState?.writeMetadataSidecar()
+                }
+                .keyboardShortcut("x", modifiers: [.command, .shift])
+                .disabled(appState?.selectedAsset == nil)
+
+                Divider()
+
+                Button("Compare Selection") {
+                    appState?.activateCompareMode()
+                }
+                .disabled(!(appState?.workspaceMode == .library && appState?.canCompareSelection == true))
+            }
+
             SidebarCommands()
             InspectorCommands()
         }

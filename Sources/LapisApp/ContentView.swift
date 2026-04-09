@@ -50,15 +50,11 @@ struct ContentView: View {
                     Label("Import", systemImage: "square.and.arrow.down")
                 }
                 .help("Import a folder of photos")
-                .keyboardShortcut("i", modifiers: [.command, .shift])
 
                 Menu {
                     Button("Apply GPX", action: state.importGPX)
-                        .keyboardShortcut("g", modifiers: [.command, .shift])
                     Button("Export Selection", action: state.exportSelection)
-                        .keyboardShortcut("e", modifiers: [.command, .shift])
                     Button("Write XMP Sidecar", action: state.writeMetadataSidecar)
-                        .keyboardShortcut("x", modifiers: [.command, .shift])
                 } label: {
                     Label("Actions", systemImage: "ellipsis.circle")
                 }
