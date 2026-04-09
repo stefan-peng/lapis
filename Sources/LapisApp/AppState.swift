@@ -356,12 +356,12 @@ final class AppState {
         workspaceMode = .library
     }
 
-    private func gpxCandidateAssets() throws -> [Asset] {
+    func gpxCandidateAssets() throws -> [Asset] {
         if !selectedAssetIDs.isEmpty {
             return selectedAssets
         }
 
-        var scopeFilter = AssetFilter.default
+        var scopeFilter = filter
         scopeFilter.albumID = selectedAlbumID
         return try environment.catalogStore.fetchAssets(filter: scopeFilter)
     }

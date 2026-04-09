@@ -53,6 +53,17 @@ import UniformTypeIdentifiers
     #expect(state.selectedAssetIDs == [assets[2].id])
 }
 
+@Test @MainActor func gpxCandidatesRespectActiveFilterWhenNothingIsSelected() throws {
+    let (state, assets) = try makeAppState()
+
+    state.filter.searchText = "asset-2"
+    try state.reload()
+
+    let candidates = try state.gpxCandidateAssets()
+
+    #expect(candidates.map(\.id) == [assets[1].id])
+}
+
 @Test @MainActor func editorZoomClampsAndFitResetsPan() throws {
     let (state, assets) = try makeAppState()
     let session = EditorSession(state: state, asset: assets[0])
