@@ -123,14 +123,16 @@ final class AppState {
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = true
 
-        guard panel.runModal() == .OK else { return }
-        do {
-            let totals = try environment.importer.importFolders(panel.urls)
-            importSummary = "Imported \(totals.importedCount), duplicates \(totals.duplicateCount), skipped \(totals.skippedCount)"
-            statusMessage = importSummary
-            try reload()
-        } catch {
-            statusMessage = error.localizedDescription
+        presentOpenPanel(panel) { [weak self] panel in
+            guard let self else { return }
+            do {
+                let totals = try self.environment.importer.importFolders(panel.urls)
+                self.importSummary = "Imported \(totals.importedCount), duplicates \(totals.duplicateCount), skipped \(totals.skippedCount)"
+                self.statusMessage = self.importSummary
+                try self.reload()
+            } catch {
+                self.statusMessage = error.localizedDescription
+            }
         }
     }
 
@@ -141,20 +143,22 @@ final class AppState {
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
 
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            let data = try Data(contentsOf: url)
-            let targetAssets = try gpxCandidateAssets()
-            let result = try environment.gpxService.applyGPX(
-                data: data,
-                to: targetAssets,
-                timezoneOffsetMinutes: gpxTimezoneOffsetMinutes,
-                cameraClockOffsetSeconds: gpxCameraClockOffsetSeconds
-            )
-            statusMessage = "Applied GPX tags to \(result.appliedCount) of \(result.candidateCount) candidate photos"
-            try reload()
-        } catch {
-            statusMessage = error.localizedDescription
+        presentOpenPanel(panel) { [weak self] panel in
+            guard let self, let url = panel.url else { return }
+            do {
+                let data = try Data(contentsOf: url)
+                let targetAssets = try self.gpxCandidateAssets()
+                let result = try self.environment.gpxService.applyGPX(
+                    data: data,
+                    to: targetAssets,
+                    timezoneOffsetMinutes: self.gpxTimezoneOffsetMinutes,
+                    cameraClockOffsetSeconds: self.gpxCameraClockOffsetSeconds
+                )
+                self.statusMessage = "Applied GPX tags to \(result.appliedCount) of \(result.candidateCount) candidate photos"
+                try self.reload()
+            } catch {
+                self.statusMessage = error.localizedDescription
+            }
         }
     }
 
@@ -265,16 +269,22 @@ final class AppState {
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
 
-        guard panel.runModal() == .OK, let destinationURL = panel.url else { return }
-        do {
-            let report = try environment.exportService.export(assets: selection, preset: preset, destinationDirectory: destinationURL)
-            if report.failures.isEmpty {
-                statusMessage = "Exported \(report.exportedURLs.count) photo(s)"
-            } else {
-                statusMessage = "Exported \(report.exportedURLs.count) photo(s), \(report.failures.count) failed"
+        presentOpenPanel(panel) { [weak self] panel in
+            guard let self, let destinationURL = panel.url else { return }
+            do {
+                let report = try self.environment.exportService.export(
+                    assets: selection,
+                    preset: preset,
+                    destinationDirectory: destinationURL
+                )
+                if report.failures.isEmpty {
+                    self.statusMessage = "Exported \(report.exportedURLs.count) photo(s)"
+                } else {
+                    self.statusMessage = "Exported \(report.exportedURLs.count) photo(s), \(report.failures.count) failed"
+                }
+            } catch {
+                self.statusMessage = error.localizedDescription
             }
-        } catch {
-            statusMessage = error.localizedDescription
         }
     }
 
@@ -380,6 +390,20 @@ final class AppState {
         let next = current.applying(intent, orderedAssetIDs: assets.map(\.id))
         applySelection(next.selectedAssetIDs, anchor: next.anchorAssetID)
         AppPerformanceMetrics.end(span, details: "selectedAfter=\(selectedAssetIDs.count)")
+    }
+
+    private func presentOpenPanel(_ panel: NSOpenPanel, onAccepted: @escaping @MainActor (NSOpenPanel) -> Void) {
+        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else {
+            statusMessage = "Open the main Lapis window to continue."
+            return
+        }
+
+        panel.beginSheetModal(for: window) { response in
+            guard response == .OK else { return }
+            Task { @MainActor in
+                onAccepted(panel)
+            }
+        }
     }
 
     private func rebuildAssetIndex() {
