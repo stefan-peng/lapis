@@ -286,6 +286,63 @@ import UniformTypeIdentifiers
     #expect(fetched.developSettings.cropRect == settings.cropRect)
 }
 
+@Test func assetEditingServiceLeavesCatalogUnchangedWhenRenderFails() throws {
+    let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let databaseURL = directory.appending(path: "catalog.sqlite")
+    let previewsURL = directory.appending(path: "previews", directoryHint: .isDirectory)
+    let store = try GRDBCatalogStore(databaseURL: databaseURL)
+    let previewCache = try PreviewService(directoryURL: previewsURL)
+    let imageURL = try writeTemporaryJPEG()
+
+    let disposition = try store.importAsset(
+        ImportedAsset(
+            sourceURL: imageURL,
+            fileIdentity: "atomic-edit",
+            fileSize: 10,
+            modifiedAt: .now,
+            captureDate: .now,
+            cameraMake: "Canon",
+            cameraModel: "R6",
+            lensModel: "24-70",
+            pixelWidth: 100,
+            pixelHeight: 100,
+            format: .jpeg,
+            gpsCoordinate: nil,
+            previewPath: "/tmp/original-preview.jpg"
+        )
+    )
+    guard case let .imported(asset) = disposition else {
+        Issue.record("Expected imported asset")
+        return
+    }
+
+    var updatedSettings = asset.developSettings
+    updatedSettings.exposure = 0.75
+
+    let service = AssetEditingService(
+        catalogStore: store,
+        renderer: FailingRenderer(),
+        previewCache: previewCache
+    )
+
+    #expect(throws: RenderFailure.self) {
+        try service.commit(
+            AssetEditRequest(
+                assetID: asset.id,
+                sourcePath: imageURL.path(percentEncoded: false),
+                settings: updatedSettings,
+                previewIdentifier: asset.id.uuidString
+            )
+        )
+    }
+
+    let fetched = try #require(try store.fetchAsset(id: asset.id))
+    #expect(fetched.developSettings == asset.developSettings)
+    #expect(fetched.previewPath == "/tmp/original-preview.jpg")
+    #expect(fetched.previewStatus == .ready)
+}
+
 @Test func developSettingsDecodesLegacyNoiseReductionShape() throws {
     let legacyJSON = """
     {
@@ -512,7 +569,16 @@ private final class MockCatalogStore: CatalogStore, @unchecked Sendable {
     func createAlbum(named name: String) throws -> Album { Album(name: name) }
     func assignAssets(_ assetIDs: [UUID], to albumID: UUID) throws {}
     func updateMetadata(assetID: UUID, rating: Int?, flag: AssetFlag?, keywords: [String]?, gpsCoordinate: GPSCoordinate?) throws {}
+    func saveEdit(assetID: UUID, settings: DevelopSettings, previewPath: String?, status: PreviewStatus) throws {}
     func saveDevelopSettings(assetID: UUID, settings: DevelopSettings) throws {}
     func updatePreview(assetID: UUID, previewPath: String?, status: PreviewStatus) throws {}
     func geotagAssets(_ matches: [GeotagMatch]) throws -> Int { matches.count }
 }
+
+private struct FailingRenderer: DevelopRenderer {
+    func renderImage(from fileURL: URL, settings: DevelopSettings, maxPixelSize: Int?) throws -> CGImage {
+        throw RenderFailure()
+    }
+}
+
+private struct RenderFailure: Error {}

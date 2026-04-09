@@ -14,6 +14,12 @@ public protocol CatalogStore: Sendable {
         keywords: [String]?,
         gpsCoordinate: GPSCoordinate?
     ) throws
+    func saveEdit(
+        assetID: UUID,
+        settings: DevelopSettings,
+        previewPath: String?,
+        status: PreviewStatus
+    ) throws
     func saveDevelopSettings(assetID: UUID, settings: DevelopSettings) throws
     func updatePreview(assetID: UUID, previewPath: String?, status: PreviewStatus) throws
     func geotagAssets(_ matches: [GeotagMatch]) throws -> Int
@@ -152,21 +158,19 @@ public final class AssetEditingService: AssetEditing, @unchecked Sendable {
     }
 
     public func commit(_ request: AssetEditRequest) throws -> AssetEditResult {
-        try catalogStore.saveDevelopSettings(assetID: request.assetID, settings: request.settings)
-
-        do {
-            let rendered = try renderer.renderImage(
-                from: URL(fileURLWithPath: request.sourcePath),
-                settings: request.settings,
-                maxPixelSize: request.previewMaxPixelSize
-            )
-            let previewURL = try previewCache.cachePreview(named: request.previewIdentifier, image: rendered)
-            let previewPath = previewURL.path(percentEncoded: false)
-            try catalogStore.updatePreview(assetID: request.assetID, previewPath: previewPath, status: .ready)
-            return AssetEditResult(settings: request.settings, previewPath: previewPath, previewStatus: .ready)
-        } catch {
-            try? catalogStore.updatePreview(assetID: request.assetID, previewPath: nil, status: .failed)
-            throw error
-        }
+        let rendered = try renderer.renderImage(
+            from: URL(fileURLWithPath: request.sourcePath),
+            settings: request.settings,
+            maxPixelSize: request.previewMaxPixelSize
+        )
+        let previewURL = try previewCache.cachePreview(named: request.previewIdentifier, image: rendered)
+        let previewPath = previewURL.path(percentEncoded: false)
+        try catalogStore.saveEdit(
+            assetID: request.assetID,
+            settings: request.settings,
+            previewPath: previewPath,
+            status: .ready
+        )
+        return AssetEditResult(settings: request.settings, previewPath: previewPath, previewStatus: .ready)
     }
 }

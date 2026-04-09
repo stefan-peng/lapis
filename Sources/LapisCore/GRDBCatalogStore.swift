@@ -200,6 +200,29 @@ public final class GRDBCatalogStore: CatalogStore, @unchecked Sendable {
         }
     }
 
+    public func saveEdit(
+        assetID: UUID,
+        settings: DevelopSettings,
+        previewPath: String?,
+        status: PreviewStatus
+    ) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                UPDATE assets
+                SET develop_settings_json = ?, preview_path = ?, preview_status = ?
+                WHERE id = ?
+                """,
+                arguments: [
+                    try String(decoding: encoder.encode(settings), as: UTF8.self),
+                    previewPath,
+                    status.rawValue,
+                    assetID.uuidString,
+                ]
+            )
+        }
+    }
+
     public func updatePreview(assetID: UUID, previewPath: String?, status: PreviewStatus) throws {
         try dbQueue.write { db in
             try db.execute(
