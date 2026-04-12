@@ -18,6 +18,7 @@ public final class GRDBCatalogStore: CatalogStore, @unchecked Sendable {
             }
 
             let asset = Asset(
+                id: importedAsset.id ?? UUID(),
                 sourcePath: importedAsset.sourceURL.path(percentEncoded: false),
                 fileIdentity: importedAsset.fileIdentity,
                 fileSize: importedAsset.fileSize,
@@ -119,6 +120,15 @@ public final class GRDBCatalogStore: CatalogStore, @unchecked Sendable {
     public func fetchAsset(id: UUID) throws -> Asset? {
         try dbQueue.read { db in
             guard let row = try AssetRow.fetchOne(db, sql: "SELECT * FROM assets WHERE id = ?", arguments: [id.uuidString]) else {
+                return nil
+            }
+            return try row.toAsset(decoder: decoder, db: db)
+        }
+    }
+
+    public func fetchAsset(sourcePath: String) throws -> Asset? {
+        try dbQueue.read { db in
+            guard let row = try fetchAssetRow(path: sourcePath, db: db) else {
                 return nil
             }
             return try row.toAsset(decoder: decoder, db: db)

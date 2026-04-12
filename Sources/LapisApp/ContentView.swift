@@ -5,110 +5,49 @@ import LapisCore
 import MapKit
 import SwiftUI
 
-struct ContentView: View {
-    private enum SidebarSelection: Hashable {
-        case allPhotos
-        case album(UUID)
-    }
+private enum SidebarSelection: Hashable {
+    case allPhotos
+    case album(UUID)
+}
 
+struct ContentView: View {
     @Bindable var state: AppState
     @State private var showsInspector = true
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
     @State private var editorSession: EditorSession?
+    @State private var hasPreparedFilterReload = false
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            sidebar
+            LibrarySidebarView(
+                albums: state.albums,
+                libraryFolders: state.libraryFolderURLs,
+                selection: sidebarSelection,
+                removeFolders: state.removeLibraryFolders(at:),
+                removeFolder: state.removeLibraryFolder(_:)
+            )
                 .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 300)
         } detail: {
-            mainContentPane
+            WorkspaceDetailView(state: state, editorSession: editorSession)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .inspector(isPresented: $showsInspector) {
-            inspectorPane
+            WorkspaceInspectorView(state: state, editorSession: editorSession)
                 .controlSize(.small)
                 .inspectorColumnWidth(min: 280, ideal: 300, max: 380)
         }
         .navigationTitle(navigationTitle)
         .navigationSplitViewStyle(.automatic)
         .searchable(text: $state.filter.searchText, prompt: "Search Library")
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Picker("Mode", selection: $state.workspaceMode) {
-                    ForEach(AppState.WorkspaceMode.allCases) { mode in
-                        Text(mode.rawValue.capitalized).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-            }
-
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    state.importFolders()
-                } label: {
-                    Label("Import", systemImage: "square.and.arrow.down")
-                }
-                .help("Import a folder of photos")
-
-                Menu {
-                    Button("Apply GPX", action: state.importGPX)
-                    Button("Export Selection", action: state.exportSelection)
-                    Button("Write XMP Sidecar", action: state.writeMetadataSidecar)
-                } label: {
-                    Label("Actions", systemImage: "ellipsis.circle")
-                }
-            }
-
-            ToolbarItem(placement: .secondaryAction) {
-                Button {
-                    if state.libraryDetailMode == .compare {
-                        state.exitCompareMode()
-                    } else {
-                        state.activateCompareMode()
-                    }
-                } label: {
-                    if state.libraryDetailMode == .compare {
-                        Label("Done Comparing", systemImage: "xmark.rectangle")
-                    } else {
-                        Label("Compare", systemImage: "rectangle.split.2x1")
-                    }
-                }
-                .disabled(
-                    state.workspaceMode != .library ||
-                    (state.libraryDetailMode != .compare && !state.canCompareSelection)
-                )
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showsInspector.toggle()
-                } label: {
-                    Label("Inspector", systemImage: "sidebar.right")
-                }
-                .help(showsInspector ? "Hide Inspector" : "Show Inspector")
-                .keyboardShortcut("i", modifiers: [.command])
-            }
+        .toolbar { toolbarContent }
+        .task(id: editorSessionTaskID) {
+            syncEditorSession()
         }
-        .onChange(of: state.workspaceMode) { _, _ in syncEditorSession() }
-        .onChange(of: state.selectedAsset?.id) { _, _ in syncEditorSession() }
-        .onAppear { syncEditorSession() }
+        .task(id: state.filter) {
+            await reloadForFilterChange()
+        }
         .safeAreaInset(edge: .bottom) {
-            if !state.statusMessage.isEmpty {
-                LabeledContent {
-                    Text(state.statusMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } label: {
-                    Label("Status", systemImage: "info.circle")
-                        .labelStyle(.iconOnly)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.bar)
-            }
+            StatusMessageBar(message: state.statusMessage)
         }
     }
 
@@ -125,6 +64,60 @@ struct ContentView: View {
             return "Library"
         case .edit:
             return "Edit"
+        }
+    }
+
+    private var editorSessionTaskID: String {
+        "\(state.workspaceMode.rawValue):\(state.selectedAsset?.id.uuidString ?? "none")"
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            Picker("Mode", selection: $state.workspaceMode) {
+                ForEach(AppState.WorkspaceMode.allCases) { mode in
+                    Text(mode.rawValue.capitalized).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+        }
+
+        ToolbarItemGroup(placement: .primaryAction) {
+            Button(action: state.referenceFolders) {
+                Label("Add Folder", systemImage: "folder.badge.plus")
+            }
+            .help("Reference a folder of photos from the filesystem")
+
+            Menu {
+                Button("Apply GPX", action: state.importGPX)
+                Button("Export Selection", action: state.exportSelection)
+                Button("Write XMP Sidecar", action: state.writeMetadataSidecar)
+            } label: {
+                Label("Actions", systemImage: "ellipsis.circle")
+            }
+        }
+
+        ToolbarItem(placement: .secondaryAction) {
+            Button(action: toggleCompareMode) {
+                if state.libraryDetailMode == .compare {
+                    Label("Done Comparing", systemImage: "xmark.rectangle")
+                } else {
+                    Label("Compare", systemImage: "rectangle.split.2x1")
+                }
+            }
+            .disabled(
+                state.workspaceMode != .library ||
+                (state.libraryDetailMode != .compare && !state.canCompareSelection)
+            )
+        }
+
+        ToolbarItem(placement: .primaryAction) {
+            Button(action: toggleInspector) {
+                Label("Inspector", systemImage: "sidebar.right")
+            }
+            .help(showsInspector ? "Hide Inspector" : "Show Inspector")
+            .keyboardShortcut("i", modifiers: [.command])
         }
     }
 
@@ -146,44 +139,24 @@ struct ContentView: View {
                 AppPerformanceMetrics.end(span, details: "bootstrapPreview=\(session.displayImage != nil)")
             }
         } else {
-            if editorSession != nil {
-                editorSession?.flushPendingEdits()
-                editorSession = nil
-            }
+            flushEditorSession()
         }
     }
 
-    @ViewBuilder
-    private var mainContentPane: some View {
-        switch state.workspaceMode {
-        case .library:
-            if state.libraryDetailMode == .compare {
-                CompareView(state: state)
-            } else {
-                LibraryGridView(state: state)
-            }
-        case .edit:
-            if let session = editorSession {
-                EditorCanvasView(session: session)
-            } else {
-                ContentUnavailableView(
-                    "Select One Photo",
-                    systemImage: "slider.horizontal.3",
-                    description: Text("Choose a single photo in Library, then enter Edit mode.")
-                )
-            }
+    @MainActor
+    private func reloadForFilterChange() async {
+        if !hasPreparedFilterReload {
+            hasPreparedFilterReload = true
+            return
         }
-    }
 
-    @ViewBuilder
-    private var inspectorPane: some View {
-        switch state.workspaceMode {
-        case .library:
-            LibraryInspectorView(state: state, asset: state.selectedAsset)
-        case .edit:
-            if let session = editorSession {
-                EditorInspectorView(session: session)
-            }
+        do {
+            try await Task.sleep(for: .milliseconds(250))
+            try state.reload()
+        } catch is CancellationError {
+            return
+        } catch {
+            state.statusMessage = error.localizedDescription
         }
     }
 
@@ -207,26 +180,129 @@ struct ContentView: View {
         )
     }
 
-    private var sidebar: some View {
-        List(selection: sidebarSelection) {
+    private func toggleCompareMode() {
+        if state.libraryDetailMode == .compare {
+            state.exitCompareMode()
+        } else {
+            state.activateCompareMode()
+        }
+    }
+
+    private func toggleInspector() {
+        showsInspector.toggle()
+    }
+
+    private func flushEditorSession() {
+        guard editorSession != nil else { return }
+        editorSession?.flushPendingEdits()
+        editorSession = nil
+    }
+}
+
+private struct WorkspaceDetailView: View {
+    let state: AppState
+    let editorSession: EditorSession?
+
+    var body: some View {
+        switch state.workspaceMode {
+        case .library:
+            if state.libraryDetailMode == .compare {
+                CompareView(state: state)
+            } else {
+                LibraryGridView(state: state)
+            }
+        case .edit:
+            if let editorSession {
+                EditorCanvasView(session: editorSession)
+            } else {
+                ContentUnavailableView(
+                    "Select One Photo",
+                    systemImage: "slider.horizontal.3",
+                    description: Text("Choose a single photo in Library, then enter Edit mode.")
+                )
+            }
+        }
+    }
+}
+
+private struct WorkspaceInspectorView: View {
+    let state: AppState
+    let editorSession: EditorSession?
+
+    @ViewBuilder
+    var body: some View {
+        switch state.workspaceMode {
+        case .library:
+            LibraryInspectorView(state: state, asset: state.selectedAsset)
+        case .edit:
+            if let editorSession {
+                EditorInspectorView(session: editorSession)
+            }
+        }
+    }
+}
+
+private struct LibrarySidebarView: View {
+    let albums: [Album]
+    let libraryFolders: [URL]
+    let selection: Binding<SidebarSelection>
+    let removeFolders: (IndexSet) -> Void
+    let removeFolder: (URL) -> Void
+
+    var body: some View {
+        List(selection: selection) {
             Section("Library") {
                 Label("All Photos", systemImage: "photo.on.rectangle.angled")
                     .tag(SidebarSelection.allPhotos)
 
-                ForEach(state.albums) { album in
+                ForEach(albums) { album in
                     Label(album.name, systemImage: "rectangle.stack")
                         .tag(SidebarSelection.album(album.id))
                 }
             }
+
+            if !libraryFolders.isEmpty {
+                Section("Folders") {
+                    ForEach(libraryFolders, id: \.path) { folderURL in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Label(folderURL.lastPathComponent, systemImage: "folder")
+                            Text(folderURL.path)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        .contextMenu {
+                            Button("Remove Folder", role: .destructive) {
+                                removeFolder(folderURL)
+                            }
+                        }
+                    }
+                    .onDelete(perform: removeFolders)
+                }
+            }
         }
         .listStyle(.sidebar)
-        .onChange(of: state.filter) { _, _ in reload() }
     }
-    private func reload() {
-        do {
-            try state.reload()
-        } catch {
-            state.statusMessage = error.localizedDescription
+}
+
+private struct StatusMessageBar: View {
+    let message: String
+
+    var body: some View {
+        if !message.isEmpty {
+            LabeledContent {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } label: {
+                Label("Status", systemImage: "info.circle")
+                    .labelStyle(.iconOnly)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.bar)
         }
     }
 }
@@ -350,7 +426,7 @@ private struct AssetThumbnailView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            preview
+            AssetThumbnailPreview(asset: asset)
                 .frame(height: 110)
                 .frame(maxWidth: .infinity)
             Text(URL(fileURLWithPath: asset.sourcePath).lastPathComponent)
@@ -372,36 +448,18 @@ private struct AssetThumbnailView: View {
                 .stroke(isSelected ? Color.accentColor.opacity(0.35) : Color.clear, lineWidth: 1)
         )
     }
-
-    @ViewBuilder
-    private var preview: some View {
-        if
-            let previewPath = asset.previewPath,
-            let nsImage = PreviewImageLoader.loadPreviewImage(from: previewPath)
-        {
-            Image(nsImage: nsImage)
-                .resizable()
-                .scaledToFit()
-        } else {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color(nsColor: .controlBackgroundColor))
-                Image(systemName: "photo")
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
 }
 
 private struct AssetPreviewPanel: View {
     let asset: Asset
     var useOriginalPreview = false
+    @State private var image: NSImage?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(URL(fileURLWithPath: asset.sourcePath).lastPathComponent)
                 .font(.headline)
-            if let image = resolvedImage {
+            if let image {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFit()
@@ -412,19 +470,42 @@ private struct AssetPreviewPanel: View {
                     .overlay(Image(systemName: "photo"))
             }
         }
+        .task(id: imageTaskID) {
+            image = PreviewImageLoader.loadPreviewPanelImage(for: asset, useOriginalPreview: useOriginalPreview)
+        }
     }
 
-    private var resolvedImage: NSImage? {
-        if useOriginalPreview {
-            return PreviewImageLoader.loadOriginalPreview(from: asset.sourcePath)
+    private var imageTaskID: String {
+        "\(asset.id.uuidString):\(asset.previewPath ?? "none"):\(useOriginalPreview)"
+    }
+}
+
+private struct AssetThumbnailPreview: View {
+    let asset: Asset
+    @State private var image: NSImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color(nsColor: .controlBackgroundColor))
+                    Image(systemName: "photo")
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
-        if
-            let previewPath = asset.previewPath,
-            let image = PreviewImageLoader.loadPreviewImage(from: previewPath)
-        {
-            return image
+        .task(id: imageTaskID) {
+            image = PreviewImageLoader.loadThumbnailImage(for: asset)
         }
-        return PreviewImageLoader.loadOriginalPreview(from: asset.sourcePath)
+    }
+
+    private var imageTaskID: String {
+        "\(asset.id.uuidString):\(asset.previewPath ?? "none")"
     }
 }
 
@@ -1489,6 +1570,27 @@ private enum PreviewImageLoader {
         }
         AppPerformanceMetrics.end(span, details: "success=\(image != nil)")
         return image
+    }
+
+    static func loadThumbnailImage(for asset: Asset) -> NSImage? {
+        if let previewPath = asset.previewPath,
+           let image = loadPreviewImage(from: previewPath) {
+            return image
+        }
+        return loadOriginalPreview(from: asset.sourcePath, maxPixelSize: 768)
+    }
+
+    static func loadPreviewPanelImage(for asset: Asset, useOriginalPreview: Bool) -> NSImage? {
+        if useOriginalPreview {
+            return loadOriginalPreview(from: asset.sourcePath)
+        }
+
+        if let previewPath = asset.previewPath,
+           let image = loadPreviewImage(from: previewPath) {
+            return image
+        }
+
+        return loadOriginalPreview(from: asset.sourcePath)
     }
 
     static func loadOriginalPreview(from sourcePath: String, maxPixelSize: Int = 2200) -> NSImage? {

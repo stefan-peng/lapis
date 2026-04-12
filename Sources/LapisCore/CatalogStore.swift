@@ -4,6 +4,7 @@ public protocol CatalogStore: Sendable {
     func importAsset(_ importedAsset: ImportedAsset) throws -> AssetImportDisposition
     func fetchAssets(filter: AssetFilter) throws -> [Asset]
     func fetchAsset(id: UUID) throws -> Asset?
+    func fetchAsset(sourcePath: String) throws -> Asset?
     func fetchAlbums() throws -> [Album]
     func createAlbum(named name: String) throws -> Album
     func assignAssets(_ assetIDs: [UUID], to albumID: UUID) throws

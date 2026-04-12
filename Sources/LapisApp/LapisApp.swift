@@ -42,8 +42,8 @@ struct LapisAppMain: App {
         .windowToolbarStyle(.unified(showsTitle: true))
         .commands {
             CommandMenu("Library") {
-                Button("Import Folder") {
-                    appState?.importFolders()
+                Button("Add Folder") {
+                    appState?.referenceFolders()
                 }
                 .keyboardShortcut("i", modifiers: [.command, .shift])
                 .disabled(appState == nil)

@@ -9,6 +9,24 @@ public final class AssetImporter: @unchecked Sendable {
         self.previewService = previewService
     }
 
+    public func importFile(
+        _ fileURL: URL,
+        into catalog: CatalogStore,
+        preferredID: UUID? = nil
+    ) throws -> AssetImportDisposition {
+        guard AssetFormat.from(fileExtension: fileURL.pathExtension) != nil else {
+            throw DecoderError.unsupportedFile(fileURL.path(percentEncoded: false))
+        }
+
+        var importedAsset = try decoder.metadata(for: fileURL)
+        importedAsset.id = preferredID
+        if let importedPreview = try? decoder.renderThumbnail(for: fileURL, maxPixelSize: 768) {
+            let previewURL = try previewService.cachePreview(named: preferredID?.uuidString ?? UUID().uuidString, image: importedPreview)
+            importedAsset.previewPath = previewURL.path(percentEncoded: false)
+        }
+        return try catalog.importAsset(importedAsset)
+    }
+
     public func importFolder(_ folderURL: URL, into catalog: CatalogStore) throws -> ImportJob {
         var job = ImportJob()
         let resourceKeys: [URLResourceKey] = [.isRegularFileKey, .isDirectoryKey]
@@ -27,12 +45,7 @@ public final class AssetImporter: @unchecked Sendable {
             }
 
             do {
-                var importedAsset = try decoder.metadata(for: fileURL)
-                if let importedPreview = try? decoder.renderThumbnail(for: fileURL, maxPixelSize: 768) {
-                    let previewURL = try previewService.cachePreview(named: UUID().uuidString, image: importedPreview)
-                    importedAsset.previewPath = previewURL.path(percentEncoded: false)
-                }
-                switch try catalog.importAsset(importedAsset) {
+                switch try importFile(fileURL, into: catalog) {
                 case .imported:
                     job.importedCount += 1
                 case .duplicate:

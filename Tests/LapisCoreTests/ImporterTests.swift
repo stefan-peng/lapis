@@ -565,6 +565,7 @@ private final class MockCatalogStore: CatalogStore, @unchecked Sendable {
 
     func fetchAssets(filter: AssetFilter) throws -> [Asset] { [] }
     func fetchAsset(id: UUID) throws -> Asset? { nil }
+    func fetchAsset(sourcePath: String) throws -> Asset? { nil }
     func fetchAlbums() throws -> [Album] { [] }
     func createAlbum(named name: String) throws -> Album { Album(name: name) }
     func assignAssets(_ assetIDs: [UUID], to albumID: UUID) throws {}

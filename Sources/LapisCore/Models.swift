@@ -521,6 +521,7 @@ public struct GeotagJob: Codable, Sendable {
 }
 
 public struct ImportedAsset: Sendable {
+    public var id: UUID?
     public var sourceURL: URL
     public var fileIdentity: String
     public var fileSize: Int64
@@ -536,6 +537,7 @@ public struct ImportedAsset: Sendable {
     public var previewPath: String?
 
     public init(
+        id: UUID? = nil,
         sourceURL: URL,
         fileIdentity: String,
         fileSize: Int64,
@@ -550,6 +552,7 @@ public struct ImportedAsset: Sendable {
         gpsCoordinate: GPSCoordinate?,
         previewPath: String? = nil
     ) {
+        self.id = id
         self.sourceURL = sourceURL
         self.fileIdentity = fileIdentity
         self.fileSize = fileSize

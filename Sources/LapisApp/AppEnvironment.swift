@@ -3,7 +3,9 @@ import LapisCore
 
 struct AppEnvironment {
     let catalogStore: any CatalogStore
-    let importer: any FolderImporting
+    let assetImporter: AssetImporter
+    let fileSystemLibrary: FileSystemLibraryService
+    let libraryReferences: any LibraryReferencing
     let gpxService: any GPXApplying
     let developProcessor: any DevelopProcessing
     let assetEditor: any AssetEditing
@@ -18,11 +20,14 @@ struct AppEnvironment {
         let store = try GRDBCatalogStore(databaseURL: catalogURL)
         let previewService = try PreviewService(directoryURL: previewURL)
         let renderer = CoreImageDevelopRenderer()
-        let rawImporter = AssetImporter(decoder: AppleRawDecoder(), previewService: previewService)
+        let decoder = AppleRawDecoder()
+        let assetImporter = AssetImporter(decoder: decoder, previewService: previewService)
 
         return AppEnvironment(
             catalogStore: store,
-            importer: FolderImportService(importer: rawImporter, catalogStore: store),
+            assetImporter: assetImporter,
+            fileSystemLibrary: FileSystemLibraryService(decoder: decoder),
+            libraryReferences: UserDefaultsLibraryReferenceStore(),
             gpxService: GPXApplicationService(
                 catalogStore: store,
                 parser: GPXParser(),

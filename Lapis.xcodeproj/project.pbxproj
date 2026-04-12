@@ -16,6 +16,7 @@
 		45CFD7B37F25471816D4829F /* ExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1290625B630A48B4E453C8A3 /* ExportService.swift */; };
 		466798CCB54AB86B4DAC2B04 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B34479A7068377052D02D2A5 /* Cocoa.framework */; };
 		496C545EDC375BCF14BB2862 /* AssetImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D63B3B23E1FFE0A5B39F2F37 /* AssetImporter.swift */; };
+		5A51DAB7E998B24A7D1D4A4E /* FileSystemLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A51DAB6E998B24A7D1D4A4E /* FileSystemLibrary.swift */; };
 		6DDACF141D3999C1B5CAB4F5 /* PreviewService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D80D60609FCBB0BCECBDAB08 /* PreviewService.swift */; };
 		71AB7A2A75C06FE7C909024F /* DevelopRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14267D901E66B2059029B546 /* DevelopRenderer.swift */; };
 		72049AC0E5D5A3C9B8F0C09E /* LapisCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 08236E9D70B5E09F44F57218 /* LapisCore.framework */; };
@@ -100,6 +101,7 @@
 		8E2D6979AC933CD5E90D5831 /* AppEnvironment.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
 		8EF11090B1BB4F7EAAC310E4 /* GRDBCatalogStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GRDBCatalogStore.swift; sourceTree = "<group>"; };
 		98D90F32B5AE9469BA71B8E1 /* Lapis.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Lapis.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A51DAB6E998B24A7D1D4A4E /* FileSystemLibrary.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FileSystemLibrary.swift; sourceTree = "<group>"; };
 		A33F8DB3C80777C33F609D97 /* MetalPreviewView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MetalPreviewView.swift; sourceTree = "<group>"; };
 		B34479A7068377052D02D2A5 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
 		BA81313FA5B3BF1092AD0938 /* ImporterTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ImporterTests.swift; sourceTree = "<group>"; };
@@ -181,6 +183,7 @@
 				7BBA42D3D8FDA316F75192AD /* AppState.swift */,
 				C8B6C1230DFAB1ACAECEEE78 /* ContentView.swift */,
 				1874FA19F41F865121FBE96F /* EditorSession.swift */,
+				5A51DAB6E998B24A7D1D4A4E /* FileSystemLibrary.swift */,
 				C85D53919447AD381DFE903A /* LapisApp.swift */,
 				A33F8DB3C80777C33F609D97 /* MetalPreviewView.swift */,
 			);
@@ -441,6 +444,7 @@
 				727D3AB5785B223930EF0FF4 /* AppState.swift in Sources */,
 				0771A09D654D8F6A64717615 /* ContentView.swift in Sources */,
 				F1E181D339CB3974C3CE91A9 /* EditorSession.swift in Sources */,
+				5A51DAB7E998B24A7D1D4A4E /* FileSystemLibrary.swift in Sources */,
 				97E80A78928ACC531E6FCE6C /* LapisApp.swift in Sources */,
 				E450D9E5F4003104A4CCF691 /* MetalPreviewView.swift in Sources */,
 			);

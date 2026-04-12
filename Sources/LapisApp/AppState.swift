@@ -1,4 +1,5 @@
 import AppKit
+import CoreLocation
 import Foundation
 import LapisCore
 import Observation
@@ -56,6 +57,7 @@ final class AppState {
 
     var assets: [Asset] = []
     var albums: [Album] = []
+    var libraryFolderURLs: [URL] = []
     var selectedAssetIDs: Set<UUID> = []
     var selectedAlbumID: UUID?
     var selectedExportPresetID: UUID = AppState.defaultExportPresets[0].id
@@ -65,7 +67,6 @@ final class AppState {
     var libraryDetailMode: LibraryDetailMode = .browse
     var showOriginalInEditor = false
     var filter = AssetFilter.default
-    var importSummary = ""
     var statusMessage = ""
     var gpxTimezoneOffsetMinutes = 0
     var gpxCameraClockOffsetSeconds = 0
@@ -73,11 +74,13 @@ final class AppState {
     var selectionAnchorAssetID: UUID?
 
     private var assetIndexByID: [UUID: Int] = [:]
+    private var libraryAssets: [Asset] = []
     private var pendingEditOpenStartNanos: UInt64?
 
     init(environment: AppEnvironment) throws {
         self.environment = environment
-        try reload()
+        self.libraryFolderURLs = environment.libraryReferences.referencedFolderURLs()
+        try reloadLibrary()
     }
 
     var selectedAssets: [Asset] {
@@ -108,17 +111,15 @@ final class AppState {
     }
 
     func reload() throws {
-        var activeFilter = filter
-        activeFilter.albumID = selectedAlbumID
-        assets = try environment.catalogStore.fetchAssets(filter: activeFilter)
+        assets = filteredLibraryAssets()
         rebuildAssetIndex()
         albums = try environment.catalogStore.fetchAlbums()
         applySelection(selectedAssetIDs.intersection(Set(assets.map(\.id))), anchor: selectionAnchorAssetID)
     }
 
-    func importFolders() {
+    func referenceFolders() {
         let panel = NSOpenPanel()
-        panel.prompt = "Import"
+        panel.prompt = "Add Folder"
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = true
@@ -126,10 +127,10 @@ final class AppState {
         presentOpenPanel(panel) { [weak self] panel in
             guard let self else { return }
             do {
-                let totals = try self.environment.importer.importFolders(panel.urls)
-                self.importSummary = "Imported \(totals.importedCount), duplicates \(totals.duplicateCount), skipped \(totals.skippedCount)"
-                self.statusMessage = self.importSummary
-                try self.reload()
+                self.libraryFolderURLs = self.mergedLibraryFolders(with: panel.urls)
+                try self.environment.libraryReferences.saveReferencedFolderURLs(self.libraryFolderURLs)
+                try self.reloadLibrary()
+                self.statusMessage = "Referencing \(self.libraryFolderURLs.count) folder(s)"
             } catch {
                 self.statusMessage = error.localizedDescription
             }
@@ -147,15 +148,15 @@ final class AppState {
             guard let self, let url = panel.url else { return }
             do {
                 let data = try Data(contentsOf: url)
-                let targetAssets = try self.gpxCandidateAssets()
+                let targetAssets = try self.gpxCandidateAssets().map(self.ensureCatalogAsset(for:))
                 let result = try self.environment.gpxService.applyGPX(
                     data: data,
                     to: targetAssets,
                     timezoneOffsetMinutes: self.gpxTimezoneOffsetMinutes,
                     cameraClockOffsetSeconds: self.gpxCameraClockOffsetSeconds
                 )
+                try self.refreshPersistedAssets(withIDs: targetAssets.map(\.id))
                 self.statusMessage = "Applied GPX tags to \(result.appliedCount) of \(result.candidateCount) candidate photos"
-                try self.reload()
             } catch {
                 self.statusMessage = error.localizedDescription
             }
@@ -165,39 +166,42 @@ final class AppState {
     func updateSelectedAssetMetadata(rating: Int? = nil, flag: AssetFlag? = nil, keywords: [String]? = nil) {
         guard let asset = selectedAsset else { return }
         do {
+            let persistedAsset = try ensureCatalogAsset(for: asset)
             try environment.catalogStore.updateMetadata(
-                assetID: asset.id,
+                assetID: persistedAsset.id,
                 rating: rating,
                 flag: flag,
                 keywords: keywords,
                 gpsCoordinate: nil
             )
-            try reload()
+            try refreshPersistedAssets(withIDs: [persistedAsset.id])
         } catch {
             statusMessage = error.localizedDescription
         }
     }
 
     func updateSelectedAssetDevelopSettings(_ transform: (inout DevelopSettings) -> Void) {
-        guard var asset = selectedAsset else { return }
+        guard let selectedAsset else { return }
+        var asset = selectedAsset
         transform(&asset.developSettings)
         do {
+            let persistedAsset = try ensureCatalogAsset(for: selectedAsset)
             let result = try environment.assetEditor.commit(
                 AssetEditRequest(
-                    assetID: asset.id,
-                    sourcePath: asset.sourcePath,
+                    assetID: persistedAsset.id,
+                    sourcePath: persistedAsset.sourcePath,
                     settings: asset.developSettings,
-                    previewIdentifier: asset.id.uuidString
+                    previewIdentifier: persistedAsset.id.uuidString
                 )
             )
             applyEditorCommit(
-                assetID: asset.id,
+                assetID: persistedAsset.id,
                 settings: result.settings,
                 previewPath: result.previewPath,
                 previewStatus: result.previewStatus
             )
             showOriginalInEditor = false
-            try reload()
+            try refreshPersistedAssets(withIDs: [persistedAsset.id])
         } catch {
             statusMessage = error.localizedDescription
         }
@@ -206,22 +210,23 @@ final class AppState {
     func resetSelectedAssetDevelopSettings() {
         guard let asset = selectedAsset else { return }
         do {
+            let persistedAsset = try ensureCatalogAsset(for: asset)
             let result = try environment.assetEditor.commit(
                 AssetEditRequest(
-                    assetID: asset.id,
-                    sourcePath: asset.sourcePath,
+                    assetID: persistedAsset.id,
+                    sourcePath: persistedAsset.sourcePath,
                     settings: .default,
-                    previewIdentifier: asset.id.uuidString
+                    previewIdentifier: persistedAsset.id.uuidString
                 )
             )
             applyEditorCommit(
-                assetID: asset.id,
+                assetID: persistedAsset.id,
                 settings: result.settings,
                 previewPath: result.previewPath,
                 previewStatus: result.previewStatus
             )
             showOriginalInEditor = false
-            try reload()
+            try refreshPersistedAssets(withIDs: [persistedAsset.id])
         } catch {
             statusMessage = error.localizedDescription
         }
@@ -241,12 +246,12 @@ final class AppState {
     }
 
     func addSelectionToAlbum(_ album: Album) {
-        let ids = Array(selectedAssetIDs)
-        guard !ids.isEmpty else { return }
         do {
+            let ids = try selectedAssets.map { try ensureCatalogAsset(for: $0).id }
+            guard !ids.isEmpty else { return }
             try environment.catalogStore.assignAssets(ids, to: album.id)
+            try refreshPersistedAssets(withIDs: ids)
             statusMessage = "Added \(ids.count) photos to \(album.name)"
-            try reload()
         } catch {
             statusMessage = error.localizedDescription
         }
@@ -345,11 +350,17 @@ final class AppState {
     }
 
     func openSelectedAssetForEditing() {
-        guard selectedAsset != nil else { return }
-        pendingEditOpenStartNanos = DispatchTime.now().uptimeNanoseconds
-        AppPerformanceMetrics.event("editor.open.requested", details: "selectedCount=\(selectedAssetIDs.count)")
-        workspaceMode = .edit
-        libraryDetailMode = .browse
+        guard let selectedAsset else { return }
+        do {
+            let persistedAsset = try ensureCatalogAsset(for: selectedAsset)
+            applySelection([persistedAsset.id], anchor: persistedAsset.id)
+            pendingEditOpenStartNanos = DispatchTime.now().uptimeNanoseconds
+            AppPerformanceMetrics.event("editor.open.requested", details: "selectedCount=\(selectedAssetIDs.count)")
+            workspaceMode = .edit
+            libraryDetailMode = .browse
+        } catch {
+            statusMessage = error.localizedDescription
+        }
     }
 
     func showLibrary() {
@@ -360,10 +371,7 @@ final class AppState {
         if !selectedAssetIDs.isEmpty {
             return selectedAssets
         }
-
-        var scopeFilter = filter
-        scopeFilter.albumID = selectedAlbumID
-        return try environment.catalogStore.fetchAssets(filter: scopeFilter)
+        return filteredLibraryAssets()
     }
 
     func applyEditorCommit(assetID: UUID, settings: DevelopSettings, previewPath: String?, previewStatus: PreviewStatus) {
@@ -416,6 +424,220 @@ final class AppState {
         let start = pendingEditOpenStartNanos
         pendingEditOpenStartNanos = nil
         return start
+    }
+
+    func reloadLibrary() throws {
+        let catalogAssets = try environment.catalogStore.fetchAssets(filter: .default)
+        libraryAssets = try environment.fileSystemLibrary.loadAssets(from: libraryFolderURLs, catalogAssets: catalogAssets)
+        try reload()
+    }
+
+    func removeLibraryFolders(at offsets: IndexSet) {
+        let urlsToRemove: [URL] = offsets.compactMap { index in
+            guard libraryFolderURLs.indices.contains(index) else { return nil }
+            return libraryFolderURLs[index]
+        }
+        removeLibraryFolders(urlsToRemove)
+    }
+
+    func removeLibraryFolder(_ folderURL: URL) {
+        removeLibraryFolders([folderURL])
+    }
+
+    private func ensureCatalogAsset(for asset: Asset) throws -> Asset {
+        if let existingAsset = try environment.catalogStore.fetchAsset(sourcePath: asset.sourcePath) {
+            replaceAsset(existingAsset)
+            return existingAsset
+        }
+
+        let disposition = try environment.assetImporter.importFile(
+            URL(fileURLWithPath: asset.sourcePath),
+            into: environment.catalogStore,
+            preferredID: asset.id
+        )
+
+        let persistedAsset: Asset
+        switch disposition {
+        case .imported(let asset), .duplicate(let asset):
+            persistedAsset = asset
+        }
+
+        replaceAsset(persistedAsset)
+        return persistedAsset
+    }
+
+    private func filteredLibraryAssets() -> [Asset] {
+        var activeFilter = filter
+        activeFilter.albumID = selectedAlbumID
+        return libraryAssets
+            .filter { asset in
+                matchesSearchText(asset, searchText: activeFilter.searchText) &&
+                matchesMinimumRating(asset, minimumRating: activeFilter.minimumRating) &&
+                matchesFlag(asset, flaggedOnly: activeFilter.flaggedOnly) &&
+                matchesKeyword(asset, keyword: activeFilter.keyword) &&
+                matchesCamera(asset, cameraContains: activeFilter.cameraContains) &&
+                matchesLens(asset, lensContains: activeFilter.lensContains) &&
+                matchesGeotagging(asset, geotaggedOnly: activeFilter.geotaggedOnly) &&
+                matchesCapturedAfter(asset, capturedAfter: activeFilter.capturedAfter) &&
+                matchesCapturedBefore(asset, capturedBefore: activeFilter.capturedBefore) &&
+                matchesLocation(asset, filter: activeFilter) &&
+                matchesAlbum(asset, albumID: activeFilter.albumID)
+            }
+            .sorted(by: libraryAssetComparator)
+    }
+
+    private func mergedLibraryFolders(with newFolderURLs: [URL]) -> [URL] {
+        var seenPaths = Set<String>()
+        return (libraryFolderURLs + newFolderURLs)
+            .map(\.standardizedFileURL)
+            .filter { seenPaths.insert($0.path).inserted }
+    }
+
+    private func replaceAsset(_ asset: Asset) {
+        let selectedAssetToReplace = selectedAssets.first(where: { $0.sourcePath == asset.sourcePath })
+        replaceAsset(in: &libraryAssets, with: asset)
+        replaceAsset(in: &assets, with: asset)
+
+        if selectedAssetIDs.contains(asset.id) == false,
+           let selectedAssetToReplace {
+            selectedAssetIDs.remove(selectedAssetToReplace.id)
+            selectedAssetIDs.insert(asset.id)
+            if selectionAnchorAssetID == selectedAssetToReplace.id {
+                selectionAnchorAssetID = asset.id
+            }
+        }
+
+        rebuildAssetIndex()
+    }
+
+    private func replaceAsset(in targetAssets: inout [Asset], with asset: Asset) {
+        guard let index = targetAssets.firstIndex(where: { $0.sourcePath == asset.sourcePath }) else { return }
+        targetAssets[index] = asset
+    }
+
+    private func refreshPersistedAssets(withIDs assetIDs: [UUID]) throws {
+        for assetID in Set(assetIDs) {
+            guard let persistedAsset = try environment.catalogStore.fetchAsset(id: assetID) else { continue }
+            replaceAsset(persistedAsset)
+        }
+        try reload()
+    }
+
+    private func removeLibraryFolders(_ folderURLsToRemove: [URL]) {
+        let removalPaths = Set(folderURLsToRemove.map { $0.standardizedFileURL.path })
+        guard !removalPaths.isEmpty else { return }
+
+        do {
+            libraryFolderURLs.removeAll { removalPaths.contains($0.standardizedFileURL.path) }
+            try environment.libraryReferences.saveReferencedFolderURLs(libraryFolderURLs)
+            try reloadLibrary()
+            statusMessage = libraryFolderURLs.isEmpty
+                ? "Removed all referenced folders"
+                : "Referencing \(libraryFolderURLs.count) folder(s)"
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    private func libraryAssetComparator(lhs: Asset, rhs: Asset) -> Bool {
+        switch (lhs.captureDate, rhs.captureDate) {
+        case let (leftDate?, rightDate?) where leftDate != rightDate:
+            return leftDate > rightDate
+        case (_?, nil):
+            return true
+        case (nil, _?):
+            return false
+        default:
+            if lhs.importedAt != rhs.importedAt {
+                return lhs.importedAt > rhs.importedAt
+            }
+            if lhs.modifiedAt != rhs.modifiedAt {
+                return lhs.modifiedAt > rhs.modifiedAt
+            }
+            return lhs.sourcePath.localizedStandardCompare(rhs.sourcePath) == .orderedAscending
+        }
+    }
+
+    private func matchesSearchText(_ asset: Asset, searchText: String) -> Bool {
+        let trimmedSearchText = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmedSearchText.isEmpty else { return true }
+        let candidates: [String] = [
+            asset.sourcePath,
+            asset.cameraMake ?? "",
+            asset.cameraModel ?? "",
+            asset.lensModel ?? "",
+            asset.keywords.joined(separator: " "),
+        ]
+        return candidates.map { $0.lowercased() }.contains { $0.contains(trimmedSearchText) }
+    }
+
+    private func matchesMinimumRating(_ asset: Asset, minimumRating: Int?) -> Bool {
+        guard let minimumRating else { return true }
+        return asset.rating >= minimumRating
+    }
+
+    private func matchesFlag(_ asset: Asset, flaggedOnly: Bool) -> Bool {
+        !flaggedOnly || asset.flag == .picked
+    }
+
+    private func matchesKeyword(_ asset: Asset, keyword: String?) -> Bool {
+        guard let keyword = keyword?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !keyword.isEmpty else {
+            return true
+        }
+        return asset.keywords.contains { $0.lowercased().contains(keyword) }
+    }
+
+    private func matchesCamera(_ asset: Asset, cameraContains: String?) -> Bool {
+        guard let cameraContains = cameraContains?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !cameraContains.isEmpty else {
+            return true
+        }
+        return [asset.cameraMake, asset.cameraModel]
+            .compactMap { $0?.lowercased() }
+            .contains { $0.contains(cameraContains) }
+    }
+
+    private func matchesLens(_ asset: Asset, lensContains: String?) -> Bool {
+        guard let lensContains = lensContains?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !lensContains.isEmpty else {
+            return true
+        }
+        return asset.lensModel?.lowercased().contains(lensContains) ?? false
+    }
+
+    private func matchesGeotagging(_ asset: Asset, geotaggedOnly: Bool) -> Bool {
+        !geotaggedOnly || asset.gpsCoordinate != nil
+    }
+
+    private func matchesCapturedAfter(_ asset: Asset, capturedAfter: Date?) -> Bool {
+        guard let capturedAfter else { return true }
+        guard let captureDate = asset.captureDate else { return false }
+        return captureDate >= capturedAfter
+    }
+
+    private func matchesCapturedBefore(_ asset: Asset, capturedBefore: Date?) -> Bool {
+        guard let capturedBefore else { return true }
+        guard let captureDate = asset.captureDate else { return false }
+        return captureDate <= capturedBefore
+    }
+
+    private func matchesLocation(_ asset: Asset, filter: AssetFilter) -> Bool {
+        guard
+            let latitude = filter.locationLatitude,
+            let longitude = filter.locationLongitude,
+            let radiusKilometers = filter.locationRadiusKilometers,
+            radiusKilometers > 0
+        else {
+            return true
+        }
+
+        guard let coordinate = asset.gpsCoordinate else { return false }
+        let target = CLLocation(latitude: latitude, longitude: longitude)
+        let assetLocation = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        return target.distance(from: assetLocation) <= radiusKilometers * 1_000
+    }
+
+    private func matchesAlbum(_ asset: Asset, albumID: UUID?) -> Bool {
+        guard let albumID else { return true }
+        return asset.albumIDs.contains(albumID)
     }
 
     private func selectionMetricLabel(for intent: LibrarySelectionIntent) -> String {
