@@ -60,6 +60,7 @@ final class AppState {
     var libraryFolderURLs: [URL] = []
     var selectedAssetIDs: Set<UUID> = []
     var selectedAlbumID: UUID?
+    var selectedLibraryFolderURL: URL?
     var selectedExportPresetID: UUID = AppState.defaultExportPresets[0].id
     var exportPresets: [ExportPreset] = AppState.defaultExportPresets
 
@@ -130,7 +131,6 @@ final class AppState {
                 self.libraryFolderURLs = self.mergedLibraryFolders(with: panel.urls)
                 try self.environment.libraryReferences.saveReferencedFolderURLs(self.libraryFolderURLs)
                 try self.reloadLibrary()
-                self.statusMessage = "Referencing \(self.libraryFolderURLs.count) folder(s)"
             } catch {
                 self.statusMessage = error.localizedDescription
             }
@@ -305,6 +305,17 @@ final class AppState {
 
     func selectAlbum(_ albumID: UUID?) {
         selectedAlbumID = albumID
+        selectedLibraryFolderURL = nil
+        do {
+            try reload()
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    func selectLibraryFolder(_ folderURL: URL?) {
+        selectedLibraryFolderURL = folderURL?.standardizedFileURL
+        selectedAlbumID = nil
         do {
             try reload()
         } catch {
@@ -427,6 +438,12 @@ final class AppState {
     }
 
     func reloadLibrary() throws {
+        if let selectedLibraryFolderURL {
+            let availablePaths = Set(libraryFolderURLs.map { $0.standardizedFileURL.path })
+            if availablePaths.contains(selectedLibraryFolderURL.standardizedFileURL.path) == false {
+                self.selectedLibraryFolderURL = nil
+            }
+        }
         let catalogAssets = try environment.catalogStore.fetchAssets(filter: .default)
         libraryAssets = try environment.fileSystemLibrary.loadAssets(from: libraryFolderURLs, catalogAssets: catalogAssets)
         try reload()
@@ -469,6 +486,7 @@ final class AppState {
     private func filteredLibraryAssets() -> [Asset] {
         var activeFilter = filter
         activeFilter.albumID = selectedAlbumID
+        let selectedFolderURL = selectedLibraryFolderURL?.standardizedFileURL
         return libraryAssets
             .filter { asset in
                 matchesSearchText(asset, searchText: activeFilter.searchText) &&
@@ -481,7 +499,8 @@ final class AppState {
                 matchesCapturedAfter(asset, capturedAfter: activeFilter.capturedAfter) &&
                 matchesCapturedBefore(asset, capturedBefore: activeFilter.capturedBefore) &&
                 matchesLocation(asset, filter: activeFilter) &&
-                matchesAlbum(asset, albumID: activeFilter.albumID)
+                matchesAlbum(asset, albumID: activeFilter.albumID) &&
+                matchesLibraryFolder(asset, folderURL: selectedFolderURL)
             }
             .sorted(by: libraryAssetComparator)
     }
@@ -529,11 +548,12 @@ final class AppState {
 
         do {
             libraryFolderURLs.removeAll { removalPaths.contains($0.standardizedFileURL.path) }
+            if let selectedLibraryFolderURL,
+               removalPaths.contains(selectedLibraryFolderURL.standardizedFileURL.path) {
+                self.selectedLibraryFolderURL = nil
+            }
             try environment.libraryReferences.saveReferencedFolderURLs(libraryFolderURLs)
             try reloadLibrary()
-            statusMessage = libraryFolderURLs.isEmpty
-                ? "Removed all referenced folders"
-                : "Referencing \(libraryFolderURLs.count) folder(s)"
         } catch {
             statusMessage = error.localizedDescription
         }
@@ -638,6 +658,13 @@ final class AppState {
     private func matchesAlbum(_ asset: Asset, albumID: UUID?) -> Bool {
         guard let albumID else { return true }
         return asset.albumIDs.contains(albumID)
+    }
+
+    private func matchesLibraryFolder(_ asset: Asset, folderURL: URL?) -> Bool {
+        guard let folderURL else { return true }
+        let folderPath = folderURL.standardizedFileURL.path
+        let assetPath = URL(fileURLWithPath: asset.sourcePath).standardizedFileURL.path
+        return assetPath == folderPath || assetPath.hasPrefix(folderPath + "/")
     }
 
     private func selectionMetricLabel(for intent: LibrarySelectionIntent) -> String {

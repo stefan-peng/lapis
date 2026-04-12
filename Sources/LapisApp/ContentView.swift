@@ -8,6 +8,7 @@ import SwiftUI
 private enum SidebarSelection: Hashable {
     case allPhotos
     case album(UUID)
+    case folder(String)
 }
 
 struct ContentView: View {
@@ -60,6 +61,9 @@ struct ContentView: View {
             if let selectedAlbumID = state.selectedAlbumID,
                let album = state.albums.first(where: { $0.id == selectedAlbumID }) {
                 return album.name
+            }
+            if let selectedLibraryFolderURL = state.selectedLibraryFolderURL {
+                return selectedLibraryFolderURL.lastPathComponent
             }
             return "Library"
         case .edit:
@@ -164,9 +168,12 @@ struct ContentView: View {
         Binding(
             get: {
                 if let selectedAlbumID = state.selectedAlbumID {
-                    .album(selectedAlbumID)
+                    return .album(selectedAlbumID)
+                }
+                if let selectedLibraryFolderURL = state.selectedLibraryFolderURL {
+                    return .folder(selectedLibraryFolderURL.standardizedFileURL.path)
                 } else {
-                    .allPhotos
+                    return .allPhotos
                 }
             },
             set: { selection in
@@ -175,6 +182,11 @@ struct ContentView: View {
                     state.selectAlbum(nil)
                 case .album(let albumID):
                     state.selectAlbum(albumID)
+                case .folder(let folderPath):
+                    let folderURL = state.libraryFolderURLs.first {
+                        $0.standardizedFileURL.path == folderPath
+                    }
+                    state.selectLibraryFolder(folderURL)
                 }
             }
         )
@@ -271,6 +283,7 @@ private struct LibrarySidebarView: View {
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
+                        .tag(SidebarSelection.folder(folderURL.standardizedFileURL.path))
                         .contextMenu {
                             Button("Remove Folder", role: .destructive) {
                                 removeFolder(folderURL)
@@ -324,6 +337,19 @@ private struct LibraryGridView: View {
             }
             .padding(.horizontal)
 
+            if state.libraryFolderURLs.count > 1 {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        folderFilterButton(title: "All Folders", folderURL: nil)
+
+                        ForEach(state.libraryFolderURLs, id: \.path) { folderURL in
+                            folderFilterButton(title: folderURL.lastPathComponent, folderURL: folderURL)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+            }
+
             ScrollView {
                 ZStack(alignment: .topLeading) {
                     Color.clear
@@ -366,6 +392,19 @@ private struct LibraryGridView: View {
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func folderFilterButton(title: String, folderURL: URL?) -> some View {
+        let isSelected = folderURL.map {
+            state.selectedLibraryFolderURL?.standardizedFileURL == $0.standardizedFileURL
+        } ?? (state.selectedLibraryFolderURL == nil)
+
+        return Button(title) {
+            state.selectLibraryFolder(folderURL)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(isSelected ? .accentColor : .gray.opacity(0.2))
+        .foregroundStyle(isSelected ? .white : .primary)
     }
 }
 

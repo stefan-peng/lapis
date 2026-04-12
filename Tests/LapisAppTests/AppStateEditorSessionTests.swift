@@ -185,6 +185,55 @@ import UniformTypeIdentifiers
     #expect(referenceStore.savedFolderURLs == [secondaryDirectory.standardizedFileURL])
 }
 
+@Test @MainActor func selectingReferencedFolderFiltersVisibleAssets() throws {
+    let primaryDirectory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    let secondaryDirectory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: primaryDirectory, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: secondaryDirectory, withIntermediateDirectories: true)
+    _ = try writeJPEG(in: primaryDirectory, name: "primary.jpg")
+    _ = try writeJPEG(in: secondaryDirectory, name: "secondary.jpg")
+
+    let referenceStore = MutableLibraryReferenceStore(folderURLs: [primaryDirectory, secondaryDirectory])
+    let environment = try makeEnvironment(
+        libraryRoot: primaryDirectory,
+        rawDecoder: CountingRawDecoder(),
+        libraryReferences: referenceStore
+    )
+    let state = try AppState(environment: environment)
+
+    state.selectLibraryFolder(secondaryDirectory)
+
+    #expect(state.selectedLibraryFolderURL == secondaryDirectory.standardizedFileURL)
+    #expect(state.selectedAlbumID == nil)
+    #expect(state.assets.count == 1)
+    #expect(state.assets[0].sourcePath == secondaryDirectory.appending(path: "secondary.jpg").path(percentEncoded: false))
+}
+
+@Test @MainActor func removingSelectedReferencedFolderClearsFolderFilter() throws {
+    let primaryDirectory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    let secondaryDirectory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: primaryDirectory, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: secondaryDirectory, withIntermediateDirectories: true)
+    _ = try writeJPEG(in: primaryDirectory, name: "primary.jpg")
+    _ = try writeJPEG(in: secondaryDirectory, name: "secondary.jpg")
+
+    let referenceStore = MutableLibraryReferenceStore(folderURLs: [primaryDirectory, secondaryDirectory])
+    let environment = try makeEnvironment(
+        libraryRoot: primaryDirectory,
+        rawDecoder: CountingRawDecoder(),
+        libraryReferences: referenceStore
+    )
+    let state = try AppState(environment: environment)
+
+    state.selectLibraryFolder(primaryDirectory)
+    state.removeLibraryFolder(primaryDirectory)
+
+    #expect(state.selectedLibraryFolderURL == nil)
+    #expect(state.libraryFolderURLs == [secondaryDirectory.standardizedFileURL])
+    #expect(state.assets.count == 1)
+    #expect(state.assets[0].sourcePath == secondaryDirectory.appending(path: "secondary.jpg").path(percentEncoded: false))
+}
+
 @Test @MainActor func editorZoomClampsAndFitResetsPan() throws {
     let (state, assets, _) = try makeAppState()
     let session = EditorSession(state: state, asset: assets[0])
