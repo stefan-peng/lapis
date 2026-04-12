@@ -3,6 +3,8 @@
 /Packages
 xcuserdata/
 DerivedData/
+/.derivedData/
+/.derivedData-review/
 /.swiftpm/
 *.xcuserstate
 .netrc
