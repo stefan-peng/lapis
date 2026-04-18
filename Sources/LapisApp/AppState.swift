@@ -67,6 +67,8 @@ final class AppState {
     var workspaceMode: WorkspaceMode = .library
     var libraryDetailMode: LibraryDetailMode = .browse
     var showOriginalInEditor = false
+    var isLoadingLibrary = false
+    var libraryLoadStatus = ""
     var filter = AssetFilter.default
     var statusMessage = ""
     var gpxTimezoneOffsetMinutes = 0
@@ -76,12 +78,15 @@ final class AppState {
 
     private var assetIndexByID: [UUID: Int] = [:]
     private var libraryAssets: [Asset] = []
+    private var libraryLoadGeneration = 0
     private var pendingEditOpenStartNanos: UInt64?
 
-    init(environment: AppEnvironment) throws {
+    init(environment: AppEnvironment, shouldLoadLibrary: Bool = true) throws {
         self.environment = environment
         self.libraryFolderURLs = environment.libraryReferences.referencedFolderURLs()
-        try reloadLibrary()
+        if shouldLoadLibrary {
+            try reloadLibrary()
+        }
     }
 
     var selectedAssets: [Asset] {
@@ -130,7 +135,9 @@ final class AppState {
             do {
                 self.libraryFolderURLs = self.mergedLibraryFolders(with: panel.urls)
                 try self.environment.libraryReferences.saveReferencedFolderURLs(self.libraryFolderURLs)
-                try self.reloadLibrary()
+                Task { @MainActor [weak self] in
+                    await self?.reloadLibraryAsync(status: "Scanning selected folders...")
+                }
             } catch {
                 self.statusMessage = error.localizedDescription
             }
@@ -438,16 +445,43 @@ final class AppState {
     }
 
     func reloadLibrary() throws {
-        if let selectedLibraryFolderURL {
-            let availablePaths = Set(libraryFolderURLs.map { $0.standardizedFileURL.path })
-            if availablePaths.contains(selectedLibraryFolderURL.standardizedFileURL.path) == false {
-                self.selectedLibraryFolderURL = nil
-            }
-        }
+        reconcileSelectedLibraryFolder()
         let catalogAssets = try environment.catalogStore.fetchAssets(filter: .default)
         libraryAssets = try environment.fileSystemLibrary.loadAssets(from: libraryFolderURLs, catalogAssets: catalogAssets)
         try reload()
         statusMessage = ""
+    }
+
+    func reloadLibraryAsync(status: String = "Scanning library...") async {
+        libraryLoadGeneration += 1
+        let generation = libraryLoadGeneration
+        isLoadingLibrary = true
+        libraryLoadStatus = status
+        reconcileSelectedLibraryFolder()
+
+        do {
+            let folderURLs = libraryFolderURLs
+            let catalogAssets = try environment.catalogStore.fetchAssets(filter: .default)
+            let fileSystemLibrary = environment.fileSystemLibrary
+            let loadedAssets = try await Task.detached(priority: .userInitiated) {
+                try fileSystemLibrary.loadAssets(from: folderURLs, catalogAssets: catalogAssets)
+            }.value
+
+            guard generation == libraryLoadGeneration else { return }
+
+            libraryAssets = loadedAssets
+            try reload()
+            statusMessage = ""
+        } catch is CancellationError {
+            return
+        } catch {
+            guard generation == libraryLoadGeneration else { return }
+            statusMessage = error.localizedDescription
+        }
+
+        guard generation == libraryLoadGeneration else { return }
+        isLoadingLibrary = false
+        libraryLoadStatus = ""
     }
 
     func removeLibraryFolders(at offsets: IndexSet) {
@@ -557,6 +591,15 @@ final class AppState {
             try reloadLibrary()
         } catch {
             statusMessage = error.localizedDescription
+        }
+    }
+
+    private func reconcileSelectedLibraryFolder() {
+        if let selectedLibraryFolderURL {
+            let availablePaths = Set(libraryFolderURLs.map { $0.standardizedFileURL.path })
+            if availablePaths.contains(selectedLibraryFolderURL.standardizedFileURL.path) == false {
+                self.selectedLibraryFolderURL = nil
+            }
         }
     }
 

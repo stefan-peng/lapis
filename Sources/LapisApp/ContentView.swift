@@ -337,6 +337,17 @@ private struct LibraryGridView: View {
             }
             .padding(.horizontal)
 
+            if state.isLoadingLibrary {
+                HStack(spacing: 10) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(state.libraryLoadStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal)
+            }
+
             if state.libraryFolderURLs.count > 1 {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -351,37 +362,53 @@ private struct LibraryGridView: View {
             }
 
             ScrollView {
-                ZStack(alignment: .topLeading) {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .frame(maxWidth: .infinity, minHeight: 1)
-                        .onTapGesture {
-                            state.clearSelection()
-                        }
+                if state.isLoadingLibrary && state.assets.isEmpty {
+                    VStack(spacing: 14) {
+                        ProgressView()
+                            .controlSize(.regular)
+                        Text(state.libraryLoadStatus)
+                            .font(.headline)
+                        Text("Lapis is scanning referenced folders in the background. You can keep the window open while the library populates.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 360)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 320)
+                    .padding()
+                } else {
+                    ZStack(alignment: .topLeading) {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .frame(maxWidth: .infinity, minHeight: 1)
+                            .onTapGesture {
+                                state.clearSelection()
+                            }
 
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 12) {
-                        ForEach(state.assets) { asset in
-                            AssetThumbnailView(asset: asset, isSelected: state.selectedAssetIDs.contains(asset.id))
-                                .contentShape(RoundedRectangle(cornerRadius: 12))
-                                .onTapGesture {
-                                    state.handleLibrarySelection(assetID: asset.id, modifiers: NSApp.currentEvent?.modifierFlags ?? [])
-                                }
-                                .onTapGesture(count: 2) {
-                                    state.selectSingleAsset(asset.id)
-                                    state.openSelectedAssetForEditing()
-                                }
-                                .contextMenu {
-                                    ForEach(state.albums) { album in
-                                        Button("Add to \(album.name)") {
-                                            state.selectSingleAsset(asset.id)
-                                            state.addSelectionToAlbum(album)
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 12) {
+                            ForEach(state.assets) { asset in
+                                AssetThumbnailView(asset: asset, isSelected: state.selectedAssetIDs.contains(asset.id))
+                                    .contentShape(RoundedRectangle(cornerRadius: 12))
+                                    .onTapGesture {
+                                        state.handleLibrarySelection(assetID: asset.id, modifiers: NSApp.currentEvent?.modifierFlags ?? [])
+                                    }
+                                    .onTapGesture(count: 2) {
+                                        state.selectSingleAsset(asset.id)
+                                        state.openSelectedAssetForEditing()
+                                    }
+                                    .contextMenu {
+                                        ForEach(state.albums) { album in
+                                            Button("Add to \(album.name)") {
+                                                state.selectSingleAsset(asset.id)
+                                                state.addSelectionToAlbum(album)
+                                            }
                                         }
                                     }
-                                }
+                            }
                         }
+                        .padding(.horizontal)
+                        .padding(.bottom)
                     }
-                    .padding(.horizontal)
-                    .padding(.bottom)
                 }
             }
             .background(

@@ -29,7 +29,9 @@ struct LapisAppMain: App {
                     ProgressView()
                         .task {
                             do {
-                                appState = try AppState(environment: .live())
+                                let state = try AppState(environment: .live(), shouldLoadLibrary: false)
+                                appState = state
+                                await state.reloadLibraryAsync(status: "Scanning photo library...")
                             } catch {
                                 launchError = error.localizedDescription
                             }

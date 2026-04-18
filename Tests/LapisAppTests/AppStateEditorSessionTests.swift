@@ -244,6 +244,27 @@ import UniformTypeIdentifiers
     #expect(state.statusMessage.isEmpty)
 }
 
+@Test @MainActor func asynchronousLibraryReloadPopulatesAssetsAndClearsLoadingState() async throws {
+    let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    _ = try writeJPEG(in: directory, name: "asset-1.jpg")
+
+    let environment = try makeEnvironment(
+        libraryRoot: directory,
+        rawDecoder: AppleRawDecoder(),
+        libraryReferences: FixedLibraryReferenceStore(folderURLs: [directory])
+    )
+    let state = try AppState(environment: environment, shouldLoadLibrary: false)
+
+    #expect(state.assets.isEmpty)
+
+    await state.reloadLibraryAsync(status: "Scanning photo library...")
+
+    #expect(state.assets.count == 1)
+    #expect(state.isLoadingLibrary == false)
+    #expect(state.libraryLoadStatus.isEmpty)
+}
+
 @Test @MainActor func editorZoomClampsAndFitResetsPan() throws {
     let (state, assets, _) = try makeAppState()
     let session = EditorSession(state: state, asset: assets[0])
