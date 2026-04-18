@@ -68,7 +68,7 @@ struct FileSystemLibraryService: Sendable {
             let enumerator = FileManager.default.enumerator(
                 at: folderURL,
                 includingPropertiesForKeys: Array(resourceKeys),
-                options: [.skipsHiddenFiles]
+                options: [.skipsHiddenFiles, .skipsPackageDescendants]
             )
 
             while let fileURL = enumerator?.nextObject() as? URL {

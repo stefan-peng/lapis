@@ -265,6 +265,20 @@ import UniformTypeIdentifiers
     #expect(state.libraryLoadStatus.isEmpty)
 }
 
+@Test func libraryScanSkipsPackageDescendants() throws {
+    let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    let packageDirectory = directory.appending(path: "Photos Library.photoslibrary", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: packageDirectory, withIntermediateDirectories: true)
+
+    let topLevelImageURL = try writeJPEG(in: directory, name: "top-level.jpg")
+    _ = try writeJPEG(in: packageDirectory, name: "nested.jpg")
+
+    let assets = try FileSystemLibraryService(decoder: AppleRawDecoder()).loadAssets(from: [directory], catalogAssets: [])
+
+    #expect(assets.count == 1)
+    #expect(assets[0].sourcePath == topLevelImageURL.path(percentEncoded: false))
+}
+
 @Test @MainActor func editorZoomClampsAndFitResetsPan() throws {
     let (state, assets, _) = try makeAppState()
     let session = EditorSession(state: state, asset: assets[0])
