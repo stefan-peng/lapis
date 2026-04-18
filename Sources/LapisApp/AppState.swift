@@ -447,6 +447,7 @@ final class AppState {
         let catalogAssets = try environment.catalogStore.fetchAssets(filter: .default)
         libraryAssets = try environment.fileSystemLibrary.loadAssets(from: libraryFolderURLs, catalogAssets: catalogAssets)
         try reload()
+        statusMessage = ""
     }
 
     func removeLibraryFolders(at offsets: IndexSet) {

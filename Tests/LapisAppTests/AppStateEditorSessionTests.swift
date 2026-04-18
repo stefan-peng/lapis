@@ -234,6 +234,16 @@ import UniformTypeIdentifiers
     #expect(state.assets[0].sourcePath == secondaryDirectory.appending(path: "secondary.jpg").path(percentEncoded: false))
 }
 
+@Test @MainActor func successfulLibraryReloadClearsStaleStatusMessage() throws {
+    let (state, _, _) = try makeAppState()
+
+    state.statusMessage = "Open the main Lapis window to continue."
+
+    try state.reloadLibrary()
+
+    #expect(state.statusMessage.isEmpty)
+}
+
 @Test @MainActor func editorZoomClampsAndFitResetsPan() throws {
     let (state, assets, _) = try makeAppState()
     let session = EditorSession(state: state, asset: assets[0])
