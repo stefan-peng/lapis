@@ -265,6 +265,70 @@ import UniformTypeIdentifiers
     #expect(state.libraryLoadStatus.isEmpty)
 }
 
+@Test @MainActor func synchronousLibraryReloadInvalidatesInFlightAsyncReload() async throws {
+    let primaryDirectory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    let secondaryDirectory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: primaryDirectory, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: secondaryDirectory, withIntermediateDirectories: true)
+    let primaryImageURL = try writeJPEG(in: primaryDirectory, name: "primary.jpg")
+    let secondaryImageURL = try writeJPEG(in: secondaryDirectory, name: "secondary.jpg")
+
+    let decoder = BlockingRawDecoder(blockedPaths: [primaryImageURL.standardizedFileURL.path(percentEncoded: false)])
+    let referenceStore = MutableLibraryReferenceStore(folderURLs: [primaryDirectory, secondaryDirectory])
+    let environment = try makeEnvironment(
+        libraryRoot: primaryDirectory,
+        rawDecoder: decoder,
+        libraryReferences: referenceStore
+    )
+    let state = try AppState(environment: environment, shouldLoadLibrary: false)
+
+    let reloadTask = Task { @MainActor in
+        await state.reloadLibraryAsync(status: "Scanning photo library...")
+    }
+    try await waitUntil("async reload to start") {
+        state.isLoadingLibrary && decoder.blockedMetadataCallCount == 1
+    }
+
+    state.removeLibraryFolder(primaryDirectory)
+
+    #expect(state.assets.map(\.sourcePath) == [secondaryImageURL.standardizedFileURL.path(percentEncoded: false)])
+
+    decoder.releaseBlockedCalls()
+    await reloadTask.value
+
+    #expect(state.assets.map(\.sourcePath) == [secondaryImageURL.standardizedFileURL.path(percentEncoded: false)])
+    #expect(state.isLoadingLibrary == false)
+    #expect(state.libraryLoadStatus.isEmpty)
+}
+
+@Test @MainActor func cancelledAsyncLibraryReloadClearsLoadingState() async throws {
+    let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let imageURL = try writeJPEG(in: directory, name: "asset-1.jpg")
+
+    let decoder = BlockingRawDecoder(blockedPaths: [imageURL.standardizedFileURL.path(percentEncoded: false)])
+    let environment = try makeEnvironment(
+        libraryRoot: directory,
+        rawDecoder: decoder,
+        libraryReferences: FixedLibraryReferenceStore(folderURLs: [directory])
+    )
+    let state = try AppState(environment: environment, shouldLoadLibrary: false)
+
+    let reloadTask = Task { @MainActor in
+        await state.reloadLibraryAsync(status: "Scanning photo library...")
+    }
+    try await waitUntil("async reload to enter loading state") {
+        state.isLoadingLibrary && decoder.blockedMetadataCallCount == 1
+    }
+
+    reloadTask.cancel()
+    decoder.releaseBlockedCalls()
+    await reloadTask.value
+
+    #expect(state.isLoadingLibrary == false)
+    #expect(state.libraryLoadStatus.isEmpty)
+}
+
 @Test func libraryScanSkipsPackageDescendants() throws {
     let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
     let packageDirectory = directory.appending(path: "Photos Library.photoslibrary", directoryHint: .isDirectory)
@@ -632,6 +696,58 @@ private final class CountingRawDecoder: RawDecoder, @unchecked Sendable {
         let fileName = fileURL.deletingPathExtension().lastPathComponent
         let suffix = fileName.split(separator: "-").last.map(String.init).flatMap(Int.init) ?? 0
         return Date(timeIntervalSince1970: 1_000 + Double(suffix))
+    }
+}
+
+private final class BlockingRawDecoder: RawDecoder, @unchecked Sendable {
+    private let lock = NSLock()
+    private let releaseSemaphore = DispatchSemaphore(value: 0)
+    private var blockedPaths: Set<String>
+    private var _blockedMetadataCallCount = 0
+
+    init(blockedPaths: Set<String>) {
+        self.blockedPaths = blockedPaths
+    }
+
+    var blockedMetadataCallCount: Int {
+        lock.withLock { _blockedMetadataCallCount }
+    }
+
+    func releaseBlockedCalls() {
+        releaseSemaphore.signal()
+    }
+
+    func metadata(for fileURL: URL) throws -> ImportedAsset {
+        let standardizedURL = fileURL.standardizedFileURL
+        let path = standardizedURL.path(percentEncoded: false)
+        let shouldBlock = lock.withLock {
+            guard blockedPaths.remove(path) != nil else { return false }
+            _blockedMetadataCallCount += 1
+            return true
+        }
+        if shouldBlock {
+            releaseSemaphore.wait()
+        }
+
+        let resourceValues = try standardizedURL.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+        return ImportedAsset(
+            sourceURL: standardizedURL,
+            fileIdentity: path,
+            fileSize: Int64(resourceValues.fileSize ?? 0),
+            modifiedAt: resourceValues.contentModificationDate ?? .now,
+            captureDate: nil,
+            cameraMake: "Apple",
+            cameraModel: "Test Camera",
+            lensModel: "Test Lens",
+            pixelWidth: 4_000,
+            pixelHeight: 3_000,
+            format: .jpeg,
+            gpsCoordinate: nil
+        )
+    }
+
+    func renderThumbnail(for fileURL: URL, maxPixelSize: Int) throws -> CGImage {
+        try #require(makeSolidImage())
     }
 }
 

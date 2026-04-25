@@ -445,6 +445,9 @@ final class AppState {
     }
 
     func reloadLibrary() throws {
+        libraryLoadGeneration += 1
+        isLoadingLibrary = false
+        libraryLoadStatus = ""
         reconcileSelectedLibraryFolder()
         let catalogAssets = try environment.catalogStore.fetchAssets(filter: .default)
         libraryAssets = try environment.fileSystemLibrary.loadAssets(from: libraryFolderURLs, catalogAssets: catalogAssets)
@@ -458,6 +461,12 @@ final class AppState {
         isLoadingLibrary = true
         libraryLoadStatus = status
         reconcileSelectedLibraryFolder()
+        defer {
+            if generation == libraryLoadGeneration {
+                isLoadingLibrary = false
+                libraryLoadStatus = ""
+            }
+        }
 
         do {
             let folderURLs = libraryFolderURLs
@@ -478,10 +487,6 @@ final class AppState {
             guard generation == libraryLoadGeneration else { return }
             statusMessage = error.localizedDescription
         }
-
-        guard generation == libraryLoadGeneration else { return }
-        isLoadingLibrary = false
-        libraryLoadStatus = ""
     }
 
     func removeLibraryFolders(at offsets: IndexSet) {
